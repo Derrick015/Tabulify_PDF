@@ -3,8 +3,14 @@
 A powerful tool that uses AI models to extract tabular data from PDF documents.
 
 ## Video Demo
-
-https://github.com/user-attachments/assets/6644dce8-45af-4366-835f-e47913fc627e
+<video src="https://github.com/user-attachments/assets/6644dce8-45af-4366-835f-e47913fc627e"
+       autoplay
+       muted
+       loop
+       playsinline
+       controls
+       style="max-width:100%; height:auto;">
+</video>
 
 ## Overview
 
