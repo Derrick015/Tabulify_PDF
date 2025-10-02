@@ -1,10 +1,14 @@
-# PDF Table Extractor AI
+# AI Powered PDF Table Extractor
 
 A powerful tool that uses AI models to extract tabular data from PDF documents.
 
+## Video Demo
+
+https://github.com/user-attachments/assets/6644dce8-45af-4366-835f-e47913fc627e
+
 ## Overview
 
-PDF Table Extractor AI is designed to solve the challenging problem of extracting structured table data from PDF files. It leverages advanced multimodal models to identify, parse, and extract tables from PDFs.
+The AI Powered PDF Table Extractor is designed to solve the challenging problem of extracting structured table data from PDF files. It leverages advanced multimodal models to identify, parse, and extract tables from PDFs.
 ## Key Features
 
 - **AI-Powered Table Detection**: Automatically identifies tables within PDF documents
