@@ -32,8 +32,8 @@ The AI Powered PDF Table Extractor is designed to solve the challenging problem 
 
 1. Clone the repository:
    ```
-   git clone https://github.com/Derrick015/PDF_Table_Extractor_AI.git
-   cd PDF_Table_Extractor_AI
+   git clone https://github.com/Derrick015/AI_Powered_PDF_Table_Extractor.git
+   cd AI_Powered_PDF_Table_Extractor
    ```
 
 2. Install required dependencies:
