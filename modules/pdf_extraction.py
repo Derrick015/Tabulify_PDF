@@ -1,38 +1,23 @@
-import tkinter as tk
-from tkinter import filedialog
 import logging
 import pymupdf
 import base64
 import pandas as pd
-import ast
 import itertools
 import asyncio
 import os
-import pymupdf
-import itertools
-import pandas as pd
 import re, unicodedata
 from openai import AsyncOpenAI
-import warnings
 from pydantic import  create_model
-from typing import Iterable, List, Dict, Tuple, Set, Callable, Optional
 from modules.llm import table_identification_llm,  vision_llm_parser
-# Concurrency controls
-OPENAI_MAX_CONCURRENCY = int(os.getenv("OPENAI_MAX_CONCURRENCY", "8"))
-PAGE_MAX_CONCURRENCY = int(os.getenv("PAGE_MAX_CONCURRENCY", "8"))
-OPENAI_SEMAPHORE = asyncio.Semaphore(OPENAI_MAX_CONCURRENCY)
-PAGE_SEMAPHORE = asyncio.Semaphore(PAGE_MAX_CONCURRENCY)
+
+# Concurrency controls for OpenAI calls
+MAX_CONCURRENCY = int(os.getenv("MAX_CONCURRENCY", "8"))
+SEMAPHORE_LIMIT = asyncio.Semaphore(MAX_CONCURRENCY)
 
 async def with_openai_semaphore(coro_func, *args, **kwargs):
     """Run an async OpenAI call under a bounded semaphore."""
-    async with OPENAI_SEMAPHORE:
+    async with SEMAPHORE_LIMIT:
         return await coro_func(*args, **kwargs)
-try:
-    import ahocorasick  # pyahocorasick
-except Exception as e:  # pragma: no cover
-    raise ImportError(
-        "pyahocorasick is required for matching. Install it with 'pip install pyahocorasick'"
-    ) from e
 
 
 def remove_duplicate_dfs(df_list):
@@ -73,579 +58,6 @@ def remove_duplicate_dfs(df_list):
             seen.add(df_hash)
     return unique_dfs
 
-
-def extract_text_from_pages(pdf_input, pages=None):
-    """
-    Extracts text from specified pages in a PDF file using PyMuPDF.
-
-    Parameters:
-        pdf_input (str or file-like object): The path to the PDF file or a file-like object.
-        pages (int, list, tuple, or None): 
-            - If an integer, extracts text from that specific page (0-indexed).
-            - If a list of integers, extracts text from the specified pages.
-            - If a tuple of two integers, treats it as a range (start, end) and extracts from start (inclusive)
-              to end (exclusive).
-            - If None, extracts text from all pages.
-
-    Returns:
-        str: The concatenated text extracted from the specified pages.
-    """
-    logging.info("Starting text extraction from PDF.")
-    logging.debug(f"Received pdf_input={pdf_input}, pages={pages}")
-
-    text = ""
-
-    # Open the PDF file using PyMuPDF.  
-    if isinstance(pdf_input, str):
-        logging.debug(f"Opening PDF file from path: {pdf_input}")
-        doc = pymupdf.open(pdf_input)
-    else:
-        logging.debug("Opening PDF file from file-like object.")
-        pdf_input.seek(0)
-        pdf_bytes = pdf_input.read()
-        doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
-
-    total_pages = doc.page_count
-    logging.debug(f"PDF has {total_pages} pages.")
-
-    # Determine which pages to extract.
-    if pages is None:
-        page_indices = range(total_pages)
-    elif isinstance(pages, int):
-        if pages < 0 or pages >= total_pages:
-            logging.error(f"Page index {pages} is out of range. Total pages: {total_pages}")
-            raise ValueError(f"Page index {pages} is out of range. Total pages: {total_pages}")
-        page_indices = [pages]
-    elif isinstance(pages, (list, tuple)):
-        if isinstance(pages, tuple) and len(pages) == 2:
-            start, end = pages
-            if not (isinstance(start, int) and isinstance(end, int)):
-                logging.error("Start and end values must be integers.")
-                raise ValueError("Start and end values must be integers.")
-            if start < 0 or end > total_pages or start >= end:
-                logging.error("Invalid page range specified.")
-                raise ValueError("Invalid page range specified.")
-            page_indices = range(start, end)
-        else:
-            page_indices = []
-            for p in pages:
-                if not isinstance(p, int):
-                    logging.error("Page indices must be integers.")
-                    raise ValueError("Page indices must be integers.")
-                if p < 0 or p >= total_pages:
-                    logging.error(f"Page index {p} is out of range. Total pages: {total_pages}")
-                    raise ValueError(f"Page index {p} is out of range. Total pages: {total_pages}")
-                page_indices.append(p)
-    else:
-        logging.error("Parameter 'pages' must be an int, list, tuple, or None.")
-        raise ValueError("Parameter 'pages' must be an int, list, tuple, or None.")
-
-    # Extract text from the specified pages.
-    for i in page_indices:
-        logging.debug(f"Extracting text from page {i + 1}")
-        page = doc.load_page(i)
-        page_text = page.get_text()
-        text += f"\n\n--- Page {i + 1} ---\n\n" + page_text + "\n|-|+++|-|\n"
-    
-    doc.close()
-    logging.info("Completed text extraction.")
-    return text
-
-
-def _normalize_for_match(text: str) -> str:
-    """
-    Normalize text for matching: lowercase and replace non-alphanumerics with single spaces,
-    preserving token boundaries. Multiple non-alphanumerics collapse to one space.
-    """
-    text = str(text).lower()
-    text = re.sub(r"[^a-z0-9]+", " ", text)
-    return re.sub(r"\s+", " ", text)
-
-
-def _compact_with_index_map(norm_text: str) -> tuple[str, list[int]]:
-    """
-    Build a compacted version of norm_text (remove spaces) and an index map from
-    each compact character index to its corresponding index in norm_text.
-    """
-    compact_chars: list[str] = []
-    index_map: list[int] = []
-    for i, ch in enumerate(norm_text):
-        if ch != " ":
-            compact_chars.append(ch)
-            index_map.append(i)
-    return "".join(compact_chars), index_map
-
-
-def _canonical_alnum_lower(text: str) -> str:
-    """Lowercase and remove all non-alphanumeric characters (including spaces/punctuations)."""
-    s = str(text).lower()
-    return re.sub(r"[^a-z0-9]+", "", s)
-
-
-def _is_alphanumeric_combo(s: str) -> bool:
-    """Return True if the term contains at least one letter and at least one digit."""
-    has_alpha = any(c.isalpha() for c in s)
-    has_digit = any(c.isdigit() for c in s)
-    return has_alpha and has_digit
-
-
-def _passes_alnum_boundary_rule(term_compact: str, norm_text: str, compact_index_map: list[int], start_c: int, end_c: int) -> bool:
-    """
-    For alphanumeric terms (mix of letters and digits), enforce boundary rule when
-    matching in compact text: reject if the character immediately before or after
-    the match (in the spaced, normalized text) is alphanumeric.
-
-    This prevents partial-embedded matches such as 'rm920' within 'rm 92080'.
-    """
-    # Only enforce for alphanumeric combo terms
-    if not _is_alphanumeric_combo(term_compact):
-        return True
-
-    if not compact_index_map:
-        return True
-
-    start_norm = compact_index_map[start_c]
-    end_norm = compact_index_map[end_c]
-
-    before_char = norm_text[start_norm - 1] if start_norm - 1 >= 0 else " "
-    after_char = norm_text[end_norm + 1] if end_norm + 1 < len(norm_text) else " "
-
-    if before_char.isalnum():
-        return False
-    if after_char.isalnum():
-        return False
-    return True
-
-
-def _prepare_model_terms(df_models: pd.DataFrame, column: str = "modelNumber") -> List[str]:
-    """
-    Prepare a deduplicated, length-sorted list of normalized model terms from a DataFrame.
-
-    - Drops null/empty values
-    - Strips brand suffixes like "/SMC" if present
-    - De-duplicates and sorts by length desc to prefer longer matches first
-    """
-    if column not in df_models.columns:
-        raise ValueError(f"Expected column '{column}' in df_models")
-
-    raw_values = (
-        df_models[column]
-        .astype(str)
-        .map(lambda x: x.strip())
-        .replace({"": pd.NA, "nan": pd.NA})
-        .dropna()
-    )
-
-    cleaned: Set[str] = set()
-    for value in raw_values:
-        # Remove common brand suffix separators like '/SMC', '-SMC', ' SMC'
-        value_wo_brand = re.sub(r"[\s\-/]*smc\s*$", "", value, flags=re.IGNORECASE)
-        value_norm_spaced = _normalize_for_match(value_wo_brand).strip()
-        if value_norm_spaced:
-            cleaned.add(value_norm_spaced)
-            # Add compact variant to allow delimiterless matches like "alpha200"
-            compact = value_norm_spaced.replace(" ", "")
-            if compact:
-                cleaned.add(compact)
-
-    # Return list sorted by token length descending to reduce substring ambiguities
-    return sorted(cleaned, key=lambda s: (-len(s), s))
-
-
-def _build_aho_automaton(terms: List[str]):
-    """
-    Build and return an Aho–Corasick automaton for the provided terms.
-    Terms should already be normalized (spaced or compact variants included).
-    """
-    if ahocorasick is None:
-        raise ImportError("pyahocorasick is required. Please install it: pip install pyahocorasick")
-    automaton = ahocorasick.Automaton()
-    for term in terms:
-        if term:
-            automaton.add_word(term, term)
-    automaton.make_automaton()
-    return automaton
-
-
-def find_model_pages_in_pdf(
-    pdf_path: str,
-    df_models: pd.DataFrame,
-    model_column: str = "modelNumber",
-    max_pages: int | None = None,
-    use_aho: bool = True,
-) -> Dict[int, List[str]]:
-    """
-    Scan a PDF and return a mapping of page_index -> matched model terms.
-
-    - Uses PyMuPDF text extraction per page
-    - Normalizes both page text and model terms for robust matching
-    - Returns 0-indexed page indices
-
-    Parameters:
-        pdf_path: Absolute path to the PDF file
-        df_models: DataFrame with a column of model numbers
-        model_column: Column name containing model numbers
-        max_pages: Optional cap for pages to scan (useful for large PDFs)
-    """
-    logging.debug(f"Scanning PDF for model occurrences: {pdf_path}")
-    doc = pymupdf.open(pdf_path)
-    try:
-        total_pages = doc.page_count
-        if max_pages is not None:
-            total_pages = min(total_pages, max_pages)
-
-        model_terms = _prepare_model_terms(df_models, column=model_column)
-        if not model_terms:
-            logging.warning("No model terms provided after cleaning; returning empty result.")
-            return {}
-
-        matches: Dict[int, List[str]] = {}
-        automaton = None
-        if use_aho and ahocorasick is not None:
-            try:
-                automaton = _build_aho_automaton(model_terms)
-            except Exception as e:
-                logging.warning(f"Falling back to regex matcher due to Aho–Corasick init error: {e}")
-                automaton = None
-
-        for page_index in range(total_pages):
-            page_text = doc.load_page(page_index).get_text() or ""
-            page_norm = _normalize_for_match(page_text)
-            page_compact, compact_index_map = _compact_with_index_map(page_norm)
-
-            page_hits: List[str] = []
-            if automaton is not None:
-                # Run over spaced text
-                for _, found in automaton.iter(page_norm):
-                    page_hits.append(found)
-                # Also run over compact text to catch delimiterless hits
-                for end_idx, found in automaton.iter(page_compact):
-                    start_idx = end_idx - len(found) + 1
-                    if _passes_alnum_boundary_rule(found, page_norm, compact_index_map, start_idx, end_idx):
-                        page_hits.append(found)
-                # Deduplicate while preserving order
-                seen_local = set()
-                page_hits = [t for t in page_hits if not (t in seen_local or seen_local.add(t))]
-                # Numeric-safe filter: digit-only terms must be contained in a single numeric token
-                if page_hits:
-                    filtered: List[str] = []
-                    tokens = page_norm.split()
-                    for t in page_hits:
-                        if t.isdigit():
-                            if any(tok.isdigit() and re.search(rf"\b{re.escape(t)}\b", tok) for tok in tokens):
-                                filtered.append(t)
-                        else:
-                            filtered.append(t)
-                    page_hits = filtered
-            else:
-                for term in model_terms:
-                    token_pattern = rf"\b{re.escape(term)}\b"
-                    if re.search(token_pattern, page_norm) is not None:
-                        page_hits.append(term)
-                    else:
-                        # Allow compact matching for delimiterless text
-                        term_compact = term.replace(" ", "")
-                        for m in re.finditer(re.escape(term_compact), page_compact):
-                            start_idx = m.start()
-                            end_idx = m.end() - 1
-                            # Numeric-safe: if term is digits only, ensure within one numeric token in spaced text
-                            if term.isdigit():
-                                if any(tok.isdigit() and re.search(rf"\b{re.escape(term)}\b", tok) for tok in page_norm.split()):
-                                    page_hits.append(term)
-                                    break
-                            else:
-                                if _passes_alnum_boundary_rule(term_compact, page_norm, compact_index_map, start_idx, end_idx):
-                                    page_hits.append(term)
-                                    break
-
-            if page_hits:
-                matches[page_index] = page_hits
-
-        logging.debug(
-            f"Completed scanning {pdf_path}. Found matches on {len(matches)} page(s)."
-        )
-        return matches
-    finally:
-        doc.close()
-
-
-def find_model_pages_in_directory(
-    directory_path: str,
-    df_models: pd.DataFrame,
-    model_column: str = "modelNumber",
-    recursive: bool = True,
-    max_pages_per_pdf: int | None = None,
-    show_progress: bool = True,
-    progress_callback: Optional[Callable[[int, int, str], None]] = None,
-) -> Dict[str, Dict[int, List[str]]]:
-    """
-    Scan all PDFs in a directory for model number occurrences.
-
-    Returns mapping: pdf_path -> { page_index -> [matched_terms...] }
-
-    Parameters:
-        directory_path: Folder to scan for PDFs
-        df_models: DataFrame containing model numbers
-        model_column: Column in df_models for model numbers
-        recursive: Recurse into subdirectories
-        max_pages_per_pdf: Optional limit of pages per PDF to scan
-        show_progress: Display a progress bar if available
-        progress_callback: Optional callable receiving (current_index, total_count, pdf_path)
-    """
-    if not os.path.isdir(directory_path):
-        raise ValueError(f"Directory does not exist: {directory_path}")
-
-    # 1) Collect all PDF paths first so we know total for progress reporting
-    pdf_paths: List[str] = []
-    if recursive:
-        for root, _, files in os.walk(directory_path):
-            for name in files:
-                if name.lower().endswith(".pdf"):
-                    pdf_paths.append(os.path.join(root, name))
-    else:
-        try:
-            for name in os.listdir(directory_path):
-                full_path = os.path.join(directory_path, name)
-                if os.path.isfile(full_path) and name.lower().endswith(".pdf"):
-                    pdf_paths.append(full_path)
-        except FileNotFoundError:
-            raise ValueError(f"Directory does not exist: {directory_path}")
-
-    total_pdfs = len(pdf_paths)
-    if total_pdfs == 0:
-        logging.info("No PDF files found in directory: %s", directory_path)
-        return {}
-
-    # 2) Set up iterator with optional progress bar
-    use_tqdm = False
-    iterator = pdf_paths
-    if show_progress:
-        try:
-            from tqdm.auto import tqdm  # type: ignore
-            iterator = tqdm(pdf_paths, desc="Scanning PDFs", unit="file")
-            use_tqdm = True
-        except Exception:
-            # Fallback: no tqdm available; proceed without a progress bar
-            use_tqdm = False
-
-    # 3) Scan each PDF and optionally report progress
-    result: Dict[str, Dict[int, List[str]]] = {}
-    for idx, pdf_path in enumerate(iterator, start=1):
-        if progress_callback is not None:
-            try:
-                progress_callback(idx, total_pdfs, pdf_path)
-            except Exception as cb_err:
-                logging.warning("Progress callback failed: %s", cb_err)
-
-        try:
-            page_map = find_model_pages_in_pdf(
-                pdf_path=pdf_path,
-                df_models=df_models,
-                model_column=model_column,
-                max_pages=max_pages_per_pdf,
-            )
-            if page_map:
-                result[pdf_path] = page_map
-                if use_tqdm:
-                    try:
-                        # Show how many pages had matches for this PDF
-                        matched_pages = len(page_map)
-                        iterator.set_postfix({"matched_pages": matched_pages})  # type: ignore[attr-defined]
-                    except Exception:
-                        pass
-        except Exception as e:
-            logging.error("Failed scanning '%s': %s", pdf_path, e)
-
-    return result
-
-
-def save_model_page_matches_to_csv(
-    matches: Dict[str, Dict[int, List[str]]],
-    output_csv_path: str,
-) -> None:
-    """
-    Save directory scan matches to a tidy CSV with columns:
-    pdf_path, page_number_1_indexed, matched_term
-    """
-    rows = []
-    for pdf_path, page_map in matches.items():
-        for page_index, terms in page_map.items():
-            for term in terms:
-                rows.append(
-                    {
-                        "pdf_path": pdf_path,
-                        "page_number": page_index + 1,
-                        "matched_term": term,
-                    }
-                )
-    df = pd.DataFrame(rows, columns=["pdf_path", "page_number", "matched_term"])
-    df.to_csv(output_csv_path, index=False)
-
-
-def find_model_matches_in_texts(
-    df_texts: pd.DataFrame,
-    text_column: str,
-    df_models: pd.DataFrame,
-    model_column: str = "modelNumber",
-    use_aho: bool = True,
-    longest_only: bool = False,
-) -> pd.DataFrame:
-    """
-    Match model terms against free-text fields in a DataFrame using the same
-    normalization and multi-strategy matching as the PDF scanner.
-
-    Parameters:
-        df_texts: DataFrame containing a text column to scan (e.g., product_info)
-        text_column: Name of the text column in df_texts
-        df_models: DataFrame containing model values (e.g., dedup_model_value)
-        model_column: Column in df_models with the model values (default 'modelNumber')
-        use_aho: If True and pyahocorasick is available, use Aho–Corasick for speed
-
-    Returns:
-        A copy of df_texts with two extra columns:
-            - matched_terms: list[str] of matched model terms (canonicalized by removing spaces)
-            - num_matches: int number of matches
-    """
-    if text_column not in df_texts.columns:
-        raise ValueError(f"Expected column '{text_column}' in df_texts")
-    if model_column not in df_models.columns:
-        raise ValueError(f"Expected column '{model_column}' in df_models")
-
-    model_terms = _prepare_model_terms(df_models, column=model_column)
-    if not model_terms:
-        logging.warning("No model terms provided after cleaning; returning input with empty matches.")
-        result = df_texts.copy()
-        result["matched_terms"] = [[] for _ in range(len(result))]
-        result["num_matches"] = 0
-        return result
-
-    automaton = None
-    if use_aho and ahocorasick is not None:
-        try:
-            automaton = _build_aho_automaton(model_terms)
-        except Exception as e:
-            logging.warning(f"Falling back to regex matcher due to Aho–Corasick init error: {e}")
-            automaton = None
-
-    # Build canonical term set for exact token matching (space boundaries only)
-    # We disregard punctuation by canonicalizing to alphanumeric lowercase.
-    canonical_term_to_originals: Dict[str, List[str]] = {}
-    max_canonical_len = 0
-    for term in model_terms:
-        canon = _canonical_alnum_lower(term)
-        if not canon:
-            continue
-        canonical_term_to_originals.setdefault(canon, []).append(term)
-        if len(canon) > max_canonical_len:
-            max_canonical_len = len(canon)
-
-    matched_lists: List[List[str]] = []
-    for _, row in df_texts.iterrows():
-        text_value = row.get(text_column, "")
-        # Tokenize strictly by whitespace, but compare canonicalized (alnum-only, lowercase)
-        # This enforces space boundaries and ignores punctuation for comparisons.
-        # Example: "REM RE4431 433" → tokens: ["REM","RE4431","433"], and
-        # canonical("RE4431-AF") => "re4431af" which won't match token "re4431".
-        tokens_raw = str(text_value).split()
-        tokens_canonical: List[str] = [_canonical_alnum_lower(tok) for tok in tokens_raw]
-
-        hits: List[str] = []
-        if tokens_canonical:
-            token_set = set(tok for tok in tokens_canonical if tok)
-            # 1) Exact token matches for any term
-            for tok in token_set:
-                originals = canonical_term_to_originals.get(tok)
-                if originals:
-                    hits.extend(originals)
-
-            # 2) Across-space/punctuation matches only for alphanumeric-combo terms
-            if max_canonical_len > 0 and len(tokens_canonical) > 1:
-                num_tokens = len(tokens_canonical)
-                for i in range(num_tokens):
-                    if not tokens_canonical[i]:
-                        continue
-                    concatenated = tokens_canonical[i]
-                    current_len = len(concatenated)
-                    # Extend to subsequent tokens up to max_canonical_len
-                    for j in range(i + 1, num_tokens):
-                        part = tokens_canonical[j]
-                        if not part:
-                            continue
-                        new_len = current_len + len(part)
-                        if new_len > max_canonical_len:
-                            break
-                        concatenated = concatenated + part
-                        current_len = new_len
-                        # Only allow across-token matches for alphanumeric-combo patterns
-                        if concatenated in canonical_term_to_originals and _is_alphanumeric_combo(concatenated):
-                            hits.extend(canonical_term_to_originals[concatenated])
-
-            # 3) Compact partial match within a single token for alphanumeric terms
-            # Allow a match if the token starts with the model term (ignoring punctuation inside the term),
-            # regardless of whether the next character is alphanumeric or not (i.e., allow embedded prefix).
-            for raw_tok in tokens_raw:
-                if not raw_tok:
-                    continue
-                raw_lower = str(raw_tok).lower()
-                canonical_acc = ""
-                last_idx = -1
-                for idx, ch in enumerate(raw_lower):
-                    if ch.isalnum():
-                        canonical_acc += ch
-                        last_idx = idx
-                        if len(canonical_acc) > max_canonical_len:
-                            break
-                        if canonical_acc in canonical_term_to_originals and _is_alphanumeric_combo(canonical_acc):
-                            hits.extend(canonical_term_to_originals[canonical_acc])
-                    else:
-                        # skip punctuation inside the token
-                        continue
-
-        # Canonicalize by returning compact representation (remove spaces)
-        seen_compact: Set[str] = set()
-        canonical_hits: List[str] = []
-        for t in hits:
-            key = t.replace(" ", "")
-            if key and key not in seen_compact:
-                seen_compact.add(key)
-                canonical_hits.append(key)
-
-        if longest_only and canonical_hits:
-            # Keep only the single longest canonical match
-            longest = max(canonical_hits, key=len)
-            matched_lists.append([longest])
-        else:
-            matched_lists.append(canonical_hits)
-
-    result = df_texts.copy()
-    result["matched_terms"] = matched_lists
-    result["num_matches"] = result["matched_terms"].map(lambda x: len(x) if isinstance(x, list) else 0)
-    return result
-
-def select_pdf_file():
-    """
-    Opens a file dialog for the user to select a PDF file.
-
-    Returns:
-        str: The path to the selected PDF file, or an empty string if no file was selected.
-    """
-    logging.info("Opening file selection dialog.")
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
-    
-    pdf_path = filedialog.askopenfilename(
-        title="Select a PDF file",
-        filetypes=[("PDF Files", "*.pdf")]
-    )
-    
-    root.destroy()
-    
-    if pdf_path:
-        logging.info(f"Selected PDF file: {pdf_path}")
-    else:
-        logging.info("No PDF file was selected.")
-    return pdf_path
 
 def get_page_pixel_data(pdf_path, page_no, dpi=300, image_type='png'):
     """
@@ -691,26 +103,6 @@ def get_page_text_thread(pdf_path: str, page_no: int) -> str:
         doc.close()
 
 
-
-def compare_table_headers(headers1, headers2):
-    """
-    Compare two lists of table headers and return True if they are the same.
-    
-    Parameters:
-        headers1 (list): First list of table headers to compare
-        headers2 (list): Second list of table headers to compare
-        
-    Returns:
-        bool: True if the headers match, False otherwise
-    """
-    logging.debug(f"Comparing table headers:\n{headers1}\n{headers2}")
-    if len(headers1) != len(headers2):
-        logging.debug("Header length mismatch.")
-        return False
-    
-    same = all(h1.strip() == h2.strip() for h1, h2 in zip(headers1, headers2))
-    logging.debug(f"Headers are the same: {same}")
-    return same
 
 def _describe_exception(err: Exception) -> str:
     """
@@ -819,74 +211,9 @@ async def get_validated_table_info(user_text, openai_client, base64_image, model
     headers1 = output1.table_headers_and_positions
     columns1 = getattr(output1, "columns_per_table", None)
 
-    # num_tables2 = output2.num_tables
-    # headers2 = output2.table_headers_and_positions
-    # columns2 = getattr(output2, "columns_per_table", None)
-
-    # if compare_table_headers(headers1, headers2) or (num_tables1 == num_tables2 and num_tables1 is not None):
-    #     logging.info("Initial table info match or same table count. Returning first attempt's result.")
-    #     return num_tables1, headers1, columns1, 0 # 0 indicates the highest confidence. The higher the number, the lower the confidence. 
     return num_tables1, headers1, columns1, 0
 
-    # Create third task if needed
-    # async with asyncio.TaskGroup() as tg:
-    #     task3 = tg.create_task(async_pattern_desc())
-    # output3 = await task3
-    # logging.debug(f"LLM attempt 3 output:\n{output3}")
 
-    # num_tables3 = output3.num_tables
-    # headers3 = output3.table_headers_and_positions
-    # columns3 = getattr(output3, "columns_per_table", None)
-
-    # logging.debug(f"headers3: {headers3}")
-    # logging.debug(f"num_tables3: {num_tables3}")
-
-    # if compare_table_headers(headers3, headers1) or (num_tables3 == num_tables1 and num_tables3 is not None):
-    #     logging.info("Majority match found with first and third results.")
-    #     return num_tables1, headers1, columns1, 1
-    
-    # if compare_table_headers(headers3, headers2) or (num_tables3 == num_tables2 and num_tables3 is not None):
-    #     logging.info("Majority match found with second and third results.")
-    #     return num_tables2, headers2, columns2, 1
-
-    # logging.warning("No matches found. Returning third run results for table_headers.")
-    # return num_tables3, headers3, columns3, 2
-
-def compare_column_data(data1, data2):
-    """
-    Compare two sets of column data results and return (bool, issue_table_headers).
-    If mismatch occurs, return which table headers encountered an issue.
-    
-    Parameters:
-        data1 (list): First set of column data to compare
-        data2 (list): Second set of column data to compare
-        
-    Returns:
-        tuple: (match_found, issue_table_headers)
-            - match_found (bool): True if the column data matches, False otherwise
-            - issue_table_headers (list): List of table headers that had issues
-    """
-    logging.debug("Comparing column data for consistency.")
-    issue_table_headers = []
-
-    if len(data1) != len(data2):
-        logging.warning("Column data length mismatch")
-        return False, issue_table_headers
-    
-    data1_sorted = sorted(data1, key=lambda x: x["index"])
-    data2_sorted = sorted(data2, key=lambda x: x["index"])
-    
-    for item1, item2 in zip(data1_sorted, data2_sorted):
-        # Compare column names for the same index
-        if set(item1["column_names"]) != set(item2["column_names"]):
-            logging.warning(f"Column names mismatch for index {item1['index']}")
-            logging.warning(f"Set 1: {item1['column_names']}")
-            logging.warning(f"Set 2: {item2['column_names']}")
-            issue_table_headers.append(item1["table_header"])
-            return False, issue_table_headers
-            
-    logging.debug("Column data match found.")
-    return True, issue_table_headers
 
 def extract_columns(response_text, tables_to_target):
     """
@@ -935,62 +262,8 @@ def extract_columns(response_text, tables_to_target):
 
 
 
-def parse_variable_data_to_df(text):
-    """
-    Parse variable data text into a pandas DataFrame.
-    
-    Parameters:
-        text (str): Text containing variable data in the format [key:value]
-        
-    Returns:
-        pandas.DataFrame: DataFrame containing the parsed variable data
-    """
-    logging.info("Parsing variable data into DataFrame.")
-    pattern = r"\[([^\]:]+):([^]]+)\]"
-    matches = re.findall(pattern, text, flags=re.DOTALL)
-
-    data = {}
-    max_len = 0
-
-    for key, val in matches:
-        items = [item.replace("***", "").strip() for item in val.split("|-|")]
-        data[key.strip()] = items
-        max_len = max(max_len, len(items))
-
-    df = pd.DataFrame({
-        col: values + [None]*(max_len - len(values))
-        for col, values in data.items()
-    })
-
-    logging.debug(f"Variable data DataFrame shape: {df.shape}")
-    return df
-
-def extract_df_from_string(text):
-    """
-    Extracts a DataFrame from a string that contains a Python list/dict-like structure.
-    
-    Parameters:
-        text (str): String containing a Python list/dict-like structure
-        
-    Returns:
-        pandas.DataFrame: DataFrame created from the extracted data structure
-        
-    Raises:
-        ValueError: If no tables can be extracted from the string
-    """
-    logging.debug("Extracting DataFrame from string representation.")
-    match = re.search(r'(\[.*\])', text, re.DOTALL)
-    if match:
-        data = ast.literal_eval(match.group(1))
-        df = pd.DataFrame(data)
-        logging.debug(f"Extracted DataFrame shape: {df.shape}")
-        return df
-    logging.error("No tables extracted from the string.")
-    raise ValueError("No tables extracted from the page")
-
-
 def rows_to_df(rows):
-    # rows is like [Row_0(...), Row_0(...), ...]
+    
     records = []
     for r in rows:
         if hasattr(r, "model_dump"):          # Pydantic v2
@@ -1318,32 +591,6 @@ async def process_tables_to_df(
         return df_list
 
 
-
-# Helper functions for notebook usage
-
-def parse_page_selection(total_pages: int, pages=None, page_range=None):
-    """Translate page selection into a list of zero-indexed page numbers."""
-    
-    if pages:
-        if isinstance(pages, str):
-            page_nums = [int(p.strip()) for p in pages.split(",") if p.strip()]
-        else:
-            page_nums = pages if isinstance(pages, list) else [pages]
-        validated = [p for p in page_nums if 1 <= p <= total_pages]
-        if not validated:
-            raise ValueError("No valid page numbers supplied.")
-        return [p - 1 for p in validated]
-
-    if page_range:
-        start, end = page_range
-        if not (1 <= start <= end <= total_pages):
-            raise ValueError("Invalid range values. Ensure 1 <= start <= end <= total_pages")
-        return list(range(start - 1, end))
-
-    # default: all pages
-    return list(range(total_pages))
-
-
 async def extract_tables_from_pdf(
     pdf_path: str,
     pages=None,
@@ -1401,16 +648,45 @@ async def extract_tables_from_pdf(
     """
     
     openai_client = AsyncOpenAI(api_key=open_api_key)
-    
+
     logging.info("Opening PDF: %s", pdf_path)
     doc = pymupdf.open(pdf_path)
-    page_indices = parse_page_selection(doc.page_count, pages, page_range)
+    # local parser to avoid importing the duplicate helper
+    def _local_parse_page_selection(total_pages: int, pages_val=None, page_range_val=None):
+        if pages_val:
+            if isinstance(pages_val, str):
+                page_nums = [int(p.strip()) for p in pages_val.split(",") if p.strip()]
+            else:
+                page_nums = pages_val if isinstance(pages_val, list) else [pages_val]
+            validated = [p for p in page_nums if 1 <= p <= total_pages]
+            if not validated:
+                raise ValueError("No valid page numbers supplied.")
+            return [p - 1 for p in validated]
+        if page_range_val:
+            start, end = page_range_val
+            if not (1 <= start <= end <= total_pages):
+                raise ValueError("Invalid range values. Ensure 1 <= start <= end <= total_pages")
+            return list(range(start - 1, end))
+        return list(range(total_pages))
+
+    page_indices = _local_parse_page_selection(doc.page_count, pages, page_range)
     logging.info("Processing %d page(s): %s", len(page_indices), [i + 1 for i in page_indices])
 
     results_output = []
 
+    # Bound overall page concurrency (local semaphore)
+    env_val = os.getenv("PAGE_MAX_CONCURRENCY")
+    try:
+        page_max = int(env_val) if env_val is not None else 0
+    except Exception:
+        page_max = 0
+    if page_max <= 0:
+        cpu_count = os.cpu_count() or 4
+        page_max = max(1, min(4, cpu_count - 1))
+    page_semaphore = asyncio.Semaphore(page_max)
+
     async def process_one_page(page_no: int):
-        async with PAGE_SEMAPHORE:
+        async with page_semaphore:
             page = doc.load_page(page_no)
             if not table_in_image:
                 if len(page.find_tables().tables) == 0:
@@ -1504,13 +780,6 @@ async def extract_tables_from_pdf(
             return results_output
     
     return None
-
-
-# Convenience wrapper for notebook usage
-async def extract_pdf_tables(pdf_path, **kwargs):
-    """Async wrapper for the main extraction function - use with await in notebooks."""
-    return await extract_tables_from_pdf(pdf_path, **kwargs)
-
 
 
 
@@ -1752,147 +1021,4 @@ def write_output_to_csv(output_final, csv_base_path, option=1, gap_rows=2):
 
     logging.info(f"CSV file writing complete. Generated files: {generated_files}")
     return generated_files
-
-
-
-
-
-
-# ---------------------------
-# PDF page export utilities
-# ---------------------------
-
-def _coalesce_page_indices_to_ranges(page_indices: Iterable[int]) -> List[Tuple[int, int]]:
-    """
-    Convert a collection of 0-indexed page indices into inclusive ranges
-    suitable for PyMuPDF's insert_pdf (from_page/to_page inclusive).
-
-    Example: [0,1,2, 4,5, 9] -> [(0,2), (4,5), (9,9)]
-    """
-    unique_sorted = sorted(set(int(i) for i in page_indices))
-    if not unique_sorted:
-        return []
-
-    ranges: List[Tuple[int, int]] = []
-    start = unique_sorted[0]
-    prev = start
-
-    for idx in unique_sorted[1:]:
-        if idx == prev + 1:
-            prev = idx
-            continue
-        ranges.append((start, prev))
-        start = idx
-        prev = idx
-    ranges.append((start, prev))
-    return ranges
-
-
-def extract_pages_to_pdf(pdf_path: str, page_indices: Iterable[int], output_pdf_path: str) -> str:
-    """
-    Extract specific 0-indexed pages from a single PDF and save them into a new PDF.
-
-    Args:
-        pdf_path: Absolute or relative path to the source PDF.
-        page_indices: Iterable of 0-indexed page numbers to extract.
-        output_pdf_path: Where to write the new PDF.
-
-    Returns:
-        The output PDF path.
-    """
-    if not os.path.exists(pdf_path):
-        raise FileNotFoundError(f"PDF file not found: {pdf_path}")
-
-    ranges = _coalesce_page_indices_to_ranges(page_indices)
-    if not ranges:
-        raise ValueError("No valid page indices provided.")
-
-    out_dir = os.path.dirname(output_pdf_path)
-    if out_dir:
-        os.makedirs(out_dir, exist_ok=True)
-
-    src = pymupdf.open(pdf_path)
-    try:
-        total_pages = src.page_count
-        for start, end in ranges:
-            if start < 0 or end >= total_pages:
-                raise ValueError(
-                    f"Page range ({start}, {end}) out of bounds for document with {total_pages} pages"
-                )
-        dest = pymupdf.open()
-        try:
-            for start, end in ranges:
-                dest.insert_pdf(src, from_page=start, to_page=end)
-            dest.save(output_pdf_path)
-        finally:
-            dest.close()
-    finally:
-        src.close()
-
-    logging.info("Saved extracted pages to %s", output_pdf_path)
-    return output_pdf_path
-
-
-def export_directory_matches_to_pdf(
-    matches: Dict[str, Dict[int, List[str]]],
-    output_pdf_path: str,
-) -> str:
-    """
-    Combine matched pages across many PDFs (as returned by find_model_pages_in_directory)
-    into a single PDF in ascending file and page order.
-
-    Args:
-        matches: Mapping of pdf_path -> { page_index (0-based) -> [matched_terms...] }
-        output_pdf_path: Where to save the combined PDF
-
-    Returns:
-        The output PDF path.
-    """
-    if not matches:
-        raise ValueError("'matches' is empty; nothing to export.")
-
-    out_dir = os.path.dirname(output_pdf_path)
-    if out_dir:
-        os.makedirs(out_dir, exist_ok=True)
-
-    combined = pymupdf.open()
-    try:
-        for pdf_path in sorted(matches.keys()):
-            page_map = matches[pdf_path]
-            if not page_map:
-                continue
-            # Coalesce indices for fewer insert operations
-            page_indices = sorted(set(int(i) for i in page_map.keys()))
-            ranges = _coalesce_page_indices_to_ranges(page_indices)
-
-            if not os.path.exists(pdf_path):
-                logging.warning("Skipping missing PDF: %s", pdf_path)
-                continue
-
-            src = pymupdf.open(pdf_path)
-            try:
-                total = src.page_count
-                for start, end in ranges:
-                    if start < 0 or end >= total:
-                        logging.warning(
-                            "Skipping out-of-bounds range (%d,%d) for '%s' with %d pages",
-                            start,
-                            end,
-                            pdf_path,
-                            total,
-                        )
-                        continue
-                    combined.insert_pdf(src, from_page=start, to_page=end)
-            finally:
-                src.close()
-
-        if combined.page_count == 0:
-            raise ValueError("No pages were added to the output PDF.")
-
-        combined.save(output_pdf_path)
-    finally:
-        combined.close()
-
-    logging.info("Saved combined matched pages to %s", output_pdf_path)
-    return output_pdf_path
 

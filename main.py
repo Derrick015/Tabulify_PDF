@@ -6,7 +6,6 @@ import time
 from dotenv import load_dotenv
 import pymupdf
 import itertools
-# from openai import OpenAI
 from openai import AsyncOpenAI
 
 from modules.pdf_extraction import (
