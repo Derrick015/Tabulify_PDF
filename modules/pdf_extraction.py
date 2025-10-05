@@ -8,15 +8,13 @@ import ast
 import itertools
 import asyncio
 import os
-import time
-from dotenv import load_dotenv
 import pymupdf
 import itertools
 import pandas as pd
 import re, unicodedata
 from openai import AsyncOpenAI
 import warnings
-from pydantic import BaseModel, create_model
+from pydantic import  create_model
 from typing import Iterable, List, Dict, Tuple, Set, Callable, Optional
 from modules.llm import table_identification_llm,  vision_llm_parser
 # Concurrency controls

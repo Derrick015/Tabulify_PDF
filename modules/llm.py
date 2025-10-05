@@ -1,8 +1,4 @@
 from pydantic import BaseModel
-import aiohttp
-
-from openai import OpenAI
-from pydantic import BaseModel
 
 class TableInfo(BaseModel):
     num_tables: int

@@ -11,7 +11,6 @@ import zipfile
 import io
 import pandas as pd
 import itertools
-import re
 
 from modules.pdf_extraction import (
     get_page_pixel_data,
