@@ -14,16 +14,16 @@ spec:
     spec:
       containers:
       - name: ai-powered-pdf-table-extractor
-        image: us-central1-docker.pkg.dev/charming-module-474314-q1/ai-powered-pdf-table-extractor-repo/ai-powered-pdf-table-extractor:latest
+        image: us-central1-docker.pkg.dev/deron-innovations/ai-powered-pdf-table-extractor-repo/ai-powered-pdf-table-extractor:latest
         ports:
         - containerPort: 8501
         resources:
           requests:
-            cpu: "250m"
-            memory: "512Mi"
+            cpu: "1000m"  # 1 CPU
+            memory: "2Gi" # 2GB
           limits:
-            cpu: "500m"
-            memory: "1Gi"
+            cpu: "4000m" # 4 CPUs
+            memory: "8Gi" # 8GB
         env:
         - name: OPENAI_API_KEY
           valueFrom:
