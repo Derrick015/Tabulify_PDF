@@ -1,73 +1,41 @@
+image: google/cloud-sdk:latest
+
 stages:
   - build
   - deploy
 
 variables:
-  DOCKER_IMAGE: us-central1-docker.pkg.dev/deron-innovations/ai-powered-pdf-table-extractor-repo/ai-powered-pdf-table-extractor
-  GCP_PROJECT_ID: deron-innovations
-  GCP_REGION: us-central1
-  GKE_CLUSTER_NAME: your-cluster-name  # Update this with your actual cluster name
-  GKE_ZONE: us-central1-a  # Update this with your actual zone
+  PROJECT_ID: "deron-innovations"
+  REGION: "us-central1"
+  REPO: "ai-powered-pdf-table-extractor-repo" # name of the repo in the artifact registry
+  REGISTRY: "us-central1-docker.pkg.dev" # registry url
+  CLUSTER: "ai-powered-pdf-table-extractor" # name of the cluster in the gke
 
-# Build and push Docker image to GCP Artifact Registry
-build:
+build_docker_image:
   stage: build
-  image: google/cloud-sdk:alpine
+  image: docker:latest
   services:
     - docker:dind
   before_script:
-    # Authenticate with GCP using service account key stored in GitLab CI/CD variables
-    - echo $GCP_SERVICE_KEY | base64 -d > ${HOME}/gcp-key.json
-    - gcloud auth activate-service-account --key-file ${HOME}/gcp-key.json
-    - gcloud config set project $GCP_PROJECT_ID
-    # Configure Docker to use gcloud as credential helper
-    - gcloud auth configure-docker $GCP_REGION-docker.pkg.dev
+    - apk add --no-cache python3 py3-pip curl
+    - pip3 install --break-system-packages google-cloud-sdk
+    - echo "$GCP_SERVICE_KEY" | base64 -d > gcp-key.json
+    - gcloud auth activate-service-account --key-file=gcp-key.json
+    - gcloud auth configure-docker $REGISTRY
   script:
-    # Build Docker image
-    - docker build -t $DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA -t $DOCKER_IMAGE:latest .
-    # Push both tags to Artifact Registry
-    - docker push $DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA
-    - docker push $DOCKER_IMAGE:latest
-  only:
-    - main
-    - master
-  tags:
-    - docker
+    - docker build -t $REGISTRY/$PROJECT_ID/$REPO/llmops-app:latest .
+    - docker push $REGISTRY/$PROJECT_ID/$REPO/llmops-app:latest
 
-# Deploy to GKE
-deploy:
+deploy_to_gke:
   stage: deploy
-  image: google/cloud-sdk:alpine
+  needs:
+    - build_docker_image
   before_script:
-    # Authenticate with GCP
-    - echo $GCP_SERVICE_KEY | base64 -d > ${HOME}/gcp-key.json
-    - gcloud auth activate-service-account --key-file ${HOME}/gcp-key.json
-    - gcloud config set project $GCP_PROJECT_ID
-    # Install kubectl
-    - gcloud components install kubectl
-    # Get GKE credentials
-    - gcloud container clusters get-credentials $GKE_CLUSTER_NAME --zone=$GKE_ZONE --project=$GCP_PROJECT_ID
+    - echo "$GCP_SERVICE_KEY" | base64 -d > gcp-key.json
+    - gcloud auth activate-service-account --key-file=gcp-key.json
+    - gcloud config set project $PROJECT_ID
   script:
-    # Create secret if it doesn't exist (will fail silently if it already exists)
-    - |
-      kubectl create secret generic ai-powered-pdf-table-extractor-secrets \
-        --from-literal=OPENAI_API_KEY=$OPENAI_API_KEY \
-        --dry-run=client -o yaml | kubectl apply -f -
-    
-    # Apply Kubernetes deployment
+    - gcloud container clusters get-credentials $CLUSTER --region $REGION --project $PROJECT_ID
     - kubectl apply -f kubernetes-deployment.yaml
-    
-    # Update the image to use the specific commit SHA (for versioning)
-    - kubectl set image deployment/ai-powered-pdf-table-extractor ai-powered-pdf-table-extractor=$DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA
-    
-    # Wait for rollout to complete
-    - kubectl rollout status deployment/ai-powered-pdf-table-extractor --timeout=5m
-    
-    # Get the service external IP
-    - kubectl get service ai-powered-pdf-table-extractor-service
   only:
     - main
-    - master
-  tags:
-    - docker
-
