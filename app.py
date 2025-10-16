@@ -12,7 +12,7 @@ import io
 import pandas as pd
 import itertools
 
-from modules.pdf_extraction import (
+from src.pdf_extraction import (
     get_page_pixel_data,
     get_page_text_thread,
     get_validated_table_info,
@@ -216,7 +216,7 @@ if uploaded_file:
                 page = doc.load_page(start_page_index)
                 pix = page.get_pixmap(matrix=pymupdf.Matrix(2, 2))  # Scale up for better visibility
                 img_bytes = pix.tobytes("png")
-                st.image(img_bytes, caption=f"Page {start_page}", use_container_width=True)
+                st.image(img_bytes, caption=f"Page {start_page}", width='stretch')
             
             with preview_col2:
                 st.markdown(f"**End Page ({end_page})**")
@@ -225,7 +225,7 @@ if uploaded_file:
                 page = doc.load_page(end_page_index)
                 pix = page.get_pixmap(matrix=pymupdf.Matrix(2, 2))  # Scale up for better visibility
                 img_bytes = pix.tobytes("png")
-                st.image(img_bytes, caption=f"Page {end_page}", use_container_width=True)
+                st.image(img_bytes, caption=f"Page {end_page}", width='stretch')
             
         else:  # Custom pages option
             # Allow selection of non-consecutive pages using comma-separated list
@@ -264,7 +264,7 @@ if uploaded_file:
                                 page = doc.load_page(page_num - 1)
                                 pix = page.get_pixmap(matrix=pymupdf.Matrix(2, 2))
                                 img_bytes = pix.tobytes("png")
-                                st.image(img_bytes, caption=f"Page {page_num}", use_container_width=True)
+                                st.image(img_bytes, caption=f"Page {page_num}", width='stretch')
                         
                         # Indicate if not all selected pages are shown in the preview
                         if len(valid_pages) > 4:
@@ -546,7 +546,7 @@ if uploaded_file:
                                 merged_df = pd.concat(all_dfs, axis=0)
                                 merged_df = merged_df.reset_index(drop=True)
                                 preview_rows = min(100, len(merged_df))
-                                st.dataframe(merged_df.head(preview_rows), use_container_width=True)
+                                st.dataframe(merged_df.head(preview_rows), width='stretch')
                                 if len(merged_df) > preview_rows:
                                     st.info(f"Showing first {preview_rows} rows out of {len(merged_df)} total rows. Download the file to see all data.")
                             else:
@@ -572,7 +572,7 @@ if uploaded_file:
                                         if output_final[i]:  # If page has tables
                                             for j, df in enumerate(output_final[i]):
                                                 st.markdown(f"**Table {j+1}**")
-                                                st.dataframe(df, use_container_width=True)
+                                                st.dataframe(df, width='stretch')
                                                 if j < len(output_final[i]) - 1:
                                                     st.markdown("---")
                                         else:
@@ -593,7 +593,7 @@ if uploaded_file:
                             # Display each table with a separator
                             for i, df in enumerate(preview_dfs):
                                 st.markdown(f"**Table {i+1}**")
-                                st.dataframe(df, use_container_width=True)
+                                st.dataframe(df, width='stretch')
                                 
                                 # Add a separator between tables (except after the last one)
                                 if i < len(preview_dfs) - 1:

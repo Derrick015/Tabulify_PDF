@@ -7,5 +7,7 @@ ai_powered_pdf_table_extractor.egg-info/dependency_links.txt
 ai_powered_pdf_table_extractor.egg-info/entry_points.txt
 ai_powered_pdf_table_extractor.egg-info/requires.txt
 ai_powered_pdf_table_extractor.egg-info/top_level.txt
-modules/llm.py
-modules/pdf_extraction.py
+src/__init__.py
+src/llm.py
+src/main.py
+src/pdf_extraction.py

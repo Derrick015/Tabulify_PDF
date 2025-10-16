@@ -8,7 +8,7 @@ import pymupdf
 import itertools
 from openai import AsyncOpenAI
 
-from modules.pdf_extraction import (
+from src.pdf_extraction import (
     get_page_pixel_data,
     get_validated_table_info,
     process_tables_to_df,

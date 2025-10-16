@@ -1,2 +1,2 @@
 [console_scripts]
-pdf-table-extractor = main:main
+pdf-table-extractor = src.main:main

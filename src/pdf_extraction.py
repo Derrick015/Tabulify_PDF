@@ -8,7 +8,7 @@ import os
 import re, unicodedata
 from openai import AsyncOpenAI
 from pydantic import  create_model
-from modules.llm import table_identification_llm,  vision_llm_parser
+from src.llm import table_identification_llm,  vision_llm_parser
 
 # Concurrency controls for OpenAI calls
 MAX_CONCURRENCY = int(os.getenv("MAX_CONCURRENCY", "8"))
@@ -46,7 +46,7 @@ def remove_duplicate_dfs(df_list):
     for df in df_list:
         # Coerce unhashable elements (lists, dicts, sets, etc.) to strings so that
         # pd.util.hash_pandas_object will not raise TypeError.
-        df_hashable = df.applymap(
+        df_hashable = df.map(
             lambda x: str(x) if isinstance(x, (list, dict, set)) else x
         )
         # Sort columns to ensure consistent hashing irrespective of column order.
@@ -675,14 +675,10 @@ async def extract_tables_from_pdf(
     results_output = []
 
     # Bound overall page concurrency (local semaphore)
-    env_val = os.getenv("PAGE_MAX_CONCURRENCY")
-    try:
-        page_max = int(env_val) if env_val is not None else 0
-    except Exception:
-        page_max = 0
-    if page_max <= 0:
-        cpu_count = os.cpu_count() or 4
-        page_max = max(1, min(4, cpu_count - 1))
+    cpu_count = os.cpu_count() or 4
+    page_max = max(1, min(4, cpu_count - 1))
+    logging.info(f"Using PAGE_MAX_CONCURRENCY={page_max}")
+
     page_semaphore = asyncio.Semaphore(page_max)
 
     async def process_one_page(page_no: int):
