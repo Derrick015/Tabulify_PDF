@@ -17,9 +17,9 @@ build_docker_image:
   services:
     - docker:dind
   before_script:
-    - apk add --no-cache python3 py3-pip curl bash
-    - curl https://sdk.cloud.google.com | bash > /dev/null
-    - source /root/google-cloud-sdk/path.bash.inc
+    - apk add --no-cache python3 curl bash
+    - curl https://sdk.cloud.google.com | bash -s -- --disable-prompts > /dev/null
+    - export PATH=$PATH:/root/google-cloud-sdk/bin
     - echo "$GCP_SERVICE_KEY" | base64 -d > gcp-key.json
     - gcloud auth activate-service-account --key-file=gcp-key.json
     - gcloud auth configure-docker $REGISTRY
