@@ -22,7 +22,7 @@ The AI Powered PDF Table Extractor is designed to solve the challenging problem 
 - **Text Validation Mode**: When enabled, values not present in the PDF text are replaced with "N/A"
 
 ## Installation
-
+#
 ### Prerequisites
 
 - Python 3.11 or higher
