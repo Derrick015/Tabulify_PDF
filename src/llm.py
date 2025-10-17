@@ -1,10 +1,11 @@
+from typing import Optional
 from pydantic import BaseModel
 
 class TableInfo(BaseModel):
     num_tables: int
     table_headers_and_positions: list[str]
     # For each table (same order as headers), list the column names as they appear in the table
-    columns_per_table: list[list[str]] | None = None
+    columns_per_table: Optional[list[list[str]]] = None
 
 
 async def table_identification_llm(user_text, base64_image, openai_client, model, structure_output=TableInfo):

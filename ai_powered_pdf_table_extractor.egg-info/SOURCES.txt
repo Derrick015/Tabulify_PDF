@@ -11,3 +11,9 @@ src/__init__.py
 src/llm.py
 src/main.py
 src/pdf_extraction.py
+tests/test_app.py
+tests/test_integration.py
+tests/test_llm.py
+tests/test_main.py
+tests/test_output_functions.py
+tests/test_pdf_extraction.py
