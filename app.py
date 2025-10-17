@@ -11,6 +11,7 @@ import zipfile
 import io
 import pandas as pd
 import itertools
+from streamlit.runtime.scriptrunner_utils.exceptions import StopException
 
 from src.pdf_extraction import (
     get_page_pixel_data,
@@ -331,7 +332,11 @@ if uploaded_file:
                     results_output = []
 
                     try:
-                        status_text.text("Initializing page processing...")
+                        try:
+                            status_text.text("Initializing page processing...")
+                        except (StopException, Exception):
+                            # Streamlit raises StopException if user navigates away
+                            pass
 
                         # Bound overall page concurrency
                         # Priority: explicit env var -> CPU-based heuristic
@@ -355,8 +360,8 @@ if uploaded_file:
                                 # Update status text, but catch StopException if user navigates away
                                 try:
                                     status_text.text(f"Processing page {page_no + 1}...")
-                                except Exception:
-                                    # Streamlit may raise StopException if user navigates away
+                                except (StopException, Exception):
+                                    # Streamlit raises StopException if user navigates away
                                     pass
 
                                 # Optional fast-skip using PyMuPDF table detection when not using image mode
@@ -434,8 +439,8 @@ if uploaded_file:
                             completed += 1
                             try:
                                 progress_bar.progress(min(1.0, completed / max(1, total)))
-                            except Exception:
-                                # Streamlit may raise StopException if user navigates away
+                            except (StopException, Exception):
+                                # Streamlit raises StopException if user navigates away
                                 pass
 
                         # Reconstruct results in the exact order of selected page indices
@@ -443,16 +448,20 @@ if uploaded_file:
                         # Save ordered page numbers (0-indexed) for accurate labeling in previews
                         try:
                             st.session_state.ordered_page_numbers = [pn for pn in page_indices if pn in results_by_page]
-                        except Exception:
+                        except (StopException, Exception):
                             st.session_state.ordered_page_numbers = list(range(len(ordered_results)))
 
                         try:
                             status_text.text("Processing complete!")
-                        except Exception:
-                            # Streamlit may raise StopException if user navigates away
+                        except (StopException, Exception):
+                            # Streamlit raises StopException if user navigates away
                             pass
                         return ordered_results
 
+                    except StopException:
+                        # User navigated away or stopped the script - this is expected behavior
+                        logging.info("Processing stopped by user interaction")
+                        return []
                     except Exception as e:
                         st.error("An issue occurred during processing. Please try again. If the issue persists, try with a different page range or check your PDF file.")
                         logging.error(f"Processing error details: {str(e)}")
