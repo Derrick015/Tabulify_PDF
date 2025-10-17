@@ -431,14 +431,14 @@ if uploaded_file:
 
                         # Reconstruct results in the exact order of selected page indices
                         ordered_results = [results_by_page[pn] for pn in page_indices if pn in results_by_page]
-                        # Save ordered page numbers (0-indexed) for accurate labeling in previews
-                        st.session_state.ordered_page_numbers = [pn for pn in page_indices if pn in results_by_page]
+                        # Return ordered page numbers for accurate labeling in previews
+                        ordered_page_numbers = [pn for pn in page_indices if pn in results_by_page]
                         
-                        return ordered_results, progress_data
+                        return ordered_results, ordered_page_numbers, progress_data
 
                     except Exception as e:
                         logging.error(f"Processing error details: {str(e)}")
-                        return [], progress_data
+                        return [], [], progress_data
                 
                 # Start the asynchronous processing workflow
                 start_time = time.time()
@@ -447,11 +447,16 @@ if uploaded_file:
                     try:
                         # Run the async function in the main thread
                         result = asyncio.run(process_pages())
-                        output_final, progress_data = result
+                        output_final, ordered_page_numbers, progress_data = result
                         
                         # Store the output in session state for persistence between Streamlit reruns
                         st.session_state.output_final = output_final
+                        st.session_state.ordered_page_numbers = ordered_page_numbers
                         st.session_state.processing_complete = True
+                        
+                        # Log results for debugging
+                        total_tables = sum(len(page_tables) for page_tables in output_final if page_tables)
+                        logging.info(f"Processing complete. Pages with tables: {len(output_final)}, Total tables: {total_tables}")
                         
                         # Calculate and display processing time for performance feedback
                         end_time = time.time()
