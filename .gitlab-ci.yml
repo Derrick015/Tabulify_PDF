@@ -14,7 +14,7 @@ variables:
   REGION: "us-central1"
   REPO: "ai-powered-pdf-table-extractor-repo" # name of the repo in the artifact registry
   REGISTRY: "us-central1-docker.pkg.dev" # registry url
-  CLUSTER: "ai-powered-pdf-table-extractor-cluster" # name of the cluster in the gke
+  CLUSTER: "ai-powered-pdf-table-extractor-cluster-1" # name of the cluster in the gke
   IMAGE_NAME: $REGISTRY/$PROJECT_ID/$REPO/ai-powered-pdf-table-extractor
 
 # Test Stage: Run pytest tests
@@ -196,3 +196,4 @@ deploy_to_gke:
     - main
     - master
   when: on_success  # Only deploy if all previous stages succeed
+
