@@ -1,0 +1,27 @@
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: pdf-extractor-cert
+spec:
+  domains:
+    - TabulifyPDF.com  
+    - www.TabulifyPDF.com  
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pdf-extractor-ingress
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    kubernetes.io/ingress.global-static-ip-name: "pdf-extractor-ip"
+    networking.gke.io/managed-certificates: "pdf-extractor-cert"
+    kubernetes.io/ingress.allow-http: "true"  # Redirects HTTP to HTTPS automatically
+spec:
+  defaultBackend:
+    service:
+      name: ai-powered-pdf-table-extractor-service
+      port:
+        number: 80
+
