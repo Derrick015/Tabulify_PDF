@@ -4,8 +4,8 @@ metadata:
   name: pdf-extractor-cert
 spec:
   domains:
-    - TabulifyPDF.com  
-    - www.TabulifyPDF.com  
+    - tabulifypdf.com  
+    - www.tabulifypdf.com  
 
 ---
 

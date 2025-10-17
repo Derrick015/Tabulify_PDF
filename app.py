@@ -100,30 +100,32 @@ with st.sidebar:
     add_in_table_and_page_information = st.checkbox("Add table and page information", value=False, 
                                  help="Enable this if you want to add table name, position and page number to the table")
 
-    st.markdown("---")  # Add some space with a horizontal line
+    # st.markdown("---")  # Add some space with a horizontal line
     
-    # Model selection dropdown for AI processing
-    model = st.selectbox(
-        "Select table extraction model",
-        options=["gpt-5", "gpt-5-mini"],
-        index=1  # Default to gpt-5-mini as recommended option
-    )
+    # Model selection dropdown for AI processing (hashed out - defaulted to gpt-5-mini)
+    # model = st.selectbox(
+    #     "Select table extraction model",
+    #     options=["gpt-5", "gpt-5-mini"],
+    #     index=1  # Default to gpt-5-mini as recommended option
+    # )
+    model = "gpt-5-mini"
     
-    vision_model = st.selectbox(
-        "Select table identification model",
-        options=["gpt-5", "gpt-5-mini"],
-        index=1  # Default to gpt-5-mini as recommended option
-    )
+    # vision_model = st.selectbox(
+    #     "Select table identification model",
+    #     options=["gpt-5", "gpt-5-mini"],
+    #     index=1  # Default to gpt-5-mini as recommended option
+    # )
+    vision_model = "gpt-5-mini"
     
     # Display information about available models to help users make appropriate selection
-    st.markdown("""
-        <div style="font-size:0.8em; color:gray;">
-        <strong>Model information:</strong><br>
-        • <strong>gpt-5</strong>: Balanced performance, recommended for most tables<br>
-        • <strong>gpt-5-mini</strong>: Faster, lower cost, but may be less accurate for complex tables<br>
-
-        </div>
-    """, unsafe_allow_html=True)
+    # st.markdown("""
+    #     <div style="font-size:0.8em; color:gray;">
+    #     <strong>Model information:</strong><br>
+    #     • <strong>gpt-5</strong>: Balanced performance, recommended for most tables<br>
+    #     • <strong>gpt-5-mini</strong>: Faster, lower cost, but may be less accurate for complex tables<br>
+    #
+    #     </div>
+    # """, unsafe_allow_html=True)
 
     # Add horizontal line for visual separation of sections
     st.markdown("---")
