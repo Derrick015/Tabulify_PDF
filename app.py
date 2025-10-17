@@ -447,6 +447,11 @@ if uploaded_file:
                 # Start the asynchronous processing workflow
                 start_time = time.time()
                 
+                # Run processing
+                processing_error = None
+                output_final = None
+                ordered_page_numbers = None
+                
                 with st.spinner(f"Processing {len(page_indices)} page(s)..."):
                     try:
                         # Run the async function in the main thread
@@ -457,10 +462,19 @@ if uploaded_file:
                         output_final, ordered_page_numbers, progress_data = result
                         logging.info(f"Unpacked result - output_final length: {len(output_final)}, ordered_page_numbers: {ordered_page_numbers}")
                         
-                        # Store the output in session state for persistence between Streamlit reruns
-                        st.session_state.output_final = output_final
-                        st.session_state.ordered_page_numbers = ordered_page_numbers
-                        st.session_state.processing_complete = True
+                    except Exception as e:
+                        logging.error(f"Async processing error: {str(e)}", exc_info=True)
+                        processing_error = e
+                
+                # Update session state OUTSIDE spinner context
+                logging.info("Exited spinner context, updating session state...")
+                if processing_error is None and output_final is not None:
+                    try:
+                        st.session_state['output_final'] = output_final
+                        logging.info("output_final updated")
+                        st.session_state['ordered_page_numbers'] = ordered_page_numbers
+                        logging.info("ordered_page_numbers updated")
+                        st.session_state['processing_complete'] = True
                         logging.info("Session state updated successfully")
                         
                         # Log results for debugging
@@ -472,12 +486,13 @@ if uploaded_file:
                         elapsed_time = end_time - start_time
                         st.success(f"Processing completed in {elapsed_time:.2f} seconds")
                         logging.info("Success message displayed")
-                        
                     except Exception as e:
-                        logging.error(f"Async processing error: {str(e)}", exc_info=True)
-                        st.error("An issue occurred during processing. Please try again. If the issue persists, try with a different page range or check your PDF file.")
-                        st.session_state.output_final = []
-                        st.session_state.processing_complete = False
+                        logging.error(f"Error updating session state: {str(e)}", exc_info=True)
+                        st.error("An issue occurred saving results. Please try again.")
+                else:
+                    st.error("An issue occurred during processing. Please try again. If the issue persists, try with a different page range or check your PDF file.")
+                    st.session_state['output_final'] = []
+                    st.session_state['processing_complete'] = False
             
             # Results display section - shows after processing is complete
             if st.session_state.processing_complete:
