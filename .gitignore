@@ -111,6 +111,12 @@ cython_debug/
 
 # GCP
 deron-innovations-096a2a8b391c.json
+gcp-key.json
 
+# Security scan reports
+bandit-report.json
+trivy-report.json
+gitleaks_8.18.1_linux_x64.tar.gz
+gitleaks
 
 GCP deployment.md

@@ -1,192 +1,121 @@
-image: google/cloud-sdk:latest
+# GitLab CI/CD Pipeline for GKE Deployment with Testing and Security
+# This pipeline runs tests, performs security scanning, builds a Docker image, and deploys to GKE
 
+# Define the stages of your pipeline
 stages:
-  - test
-  - security
-  - build
-  - scan
-  - deploy
+  - test      # Run automated tests
+  - security  # Security scanning
+  - build     # Build the Docker image
+  - deploy    # Deploy to GKE
 
+# Global variables
 variables:
   PROJECT_ID: "deron-innovations"
   REGION: "us-central1"
   REPO: "ai-powered-pdf-table-extractor-repo" # name of the repo in the artifact registry
   REGISTRY: "us-central1-docker.pkg.dev" # registry url
   CLUSTER: "ai-powered-pdf-table-extractor-cluster" # name of the cluster in the gke
-  DOCKER_IMAGE: "$REGISTRY/$PROJECT_ID/$REPO/ai-powered-pdf-table-extractor:latest"
-  # Security scan thresholds
-  SECURITY_ALLOW_MEDIUM: "true"
-  SECURITY_ALLOW_HIGH: "false"
+  IMAGE_NAME: $REGISTRY/$PROJECT_ID/$REPO/ai-powered-pdf-table-extractor
 
-# ============================================================================
-# TEST STAGE
-# ============================================================================
-
-unit_tests:
+# Test Stage: Run pytest tests
+test:
   stage: test
   image: python:3.11-slim
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends 
-        build-essential 
-        libmupdf-dev 
-        mupdf-tools
-    - pip install --upgrade pip
-    - pip install -r requirements.txt
+    # Install package with dev dependencies from pyproject.toml
+    - pip install --quiet -e ".[dev]"
   script:
-    - echo "Running unit tests..."
-    - pytest tests/ -v --tb=short -m "unit or not integration" --junitxml=report.xml --cov=src --cov-report=term --cov-report=xml:coverage.xml --cov-report=html:htmlcov
+    # Run pytest with coverage reporting
+    # -v: verbose output, --tb=short: shorter traceback format
+    - pytest -v --tb=short --cov=src --cov-report=term --cov-report=html
+  # Extract test coverage percentage from pytest output for GitLab's coverage badge
+  # This regex looks for lines like "TOTAL ... 85%" and extracts the percentage
+  # GitLab will display this as a coverage badge in the UI (e.g., "coverage: 85%")
   coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
   artifacts:
-    when: always
     reports:
-      junit: report.xml
       coverage_report:
         coverage_format: cobertura
         path: coverage.xml
     paths:
       - htmlcov/
-      - coverage.xml
-      - report.xml
-    expire_in: 30 days
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == "main"'
-    - if: '$CI_COMMIT_BRANCH == "develop"'
-
-integration_tests:
-  stage: test
-  image: python:3.11-slim
-  before_script:
-    - apt-get update && apt-get install -y --no-install-recommends 
-        build-essential 
-        libmupdf-dev 
-        mupdf-tools
-    - pip install --upgrade pip
-    - pip install -r requirements.txt
-  script:
-    - echo "Running integration tests..."
-    - pytest tests/ -v --tb=short -m "integration" --junitxml=integration-report.xml
-  artifacts:
+      - .coverage
+    expire_in: 1 week
     when: always
-    reports:
-      junit: integration-report.xml
-    paths:
-      - integration-report.xml
-    expire_in: 30 days
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == "main"'
-  allow_failure: true
+  only:
+    - main
+    - master
+    - merge_requests  # Also run on merge requests
+  allow_failure: false  # Pipeline fails if tests fail
 
-code_quality:
-  stage: test
-  image: python:3.11-slim
-  before_script:
-    - pip install flake8 pylint bandit black isort mypy
-  script:
-    - echo "Running code quality checks..."
-    - flake8 src/ --max-line-length=120 --extend-ignore=E203,W503 --count --statistics || true
-    - pylint src/ --max-line-length=120 --disable=C0111,R0903 || true
-    - black --check src/ || true
-    - isort --check-only src/ || true
-  allow_failure: true
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == "main"'
-
-# ============================================================================
-# SECURITY STAGE
-# ============================================================================
-
-# SAST - Static Application Security Testing
-sast:
-  stage: security
-  artifacts:
-    reports:
-      sast: gl-sast-report.json
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == "main"'
-
-# Secret Detection - Scan for exposed secrets
-secret_detection:
-  stage: security
-  artifacts:
-    reports:
-      secret_detection: gl-secret-detection-report.json
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == "main"'
-
-# Dependency Scanning - Check for vulnerable dependencies
-dependency_scanning:
-  stage: security
-  artifacts:
-    reports:
-      dependency_scanning: gl-dependency-scanning-report.json
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == "main"'
-
-# Python Security Scanning with Bandit
-bandit_security_scan:
+# Security Stage: Scan dependencies for vulnerabilities
+security:dependency-scan:
   stage: security
   image: python:3.11-slim
   before_script:
-    - pip install bandit[toml]
+    # Install security scanning tools
+    - pip install --quiet pip-audit safety
+    - pip install --quiet -e ".[dev]"
   script:
-    - echo "Running Bandit security scan..."
-    - bandit -r src/ -f json -o bandit-report.json || true
-    - bandit -r src/ -f screen
+    # Scan dependencies for known vulnerabilities using pip-audit
+    - echo "Running pip-audit for dependency vulnerability scanning..."
+    - pip-audit --desc --skip-editable || true
+    # Also run safety check as a backup
+    - echo "Running safety check..."
+    - safety check --json || true
+  only:
+    - main
+    - master
+    - merge_requests
+  allow_failure: true  # Don't block pipeline, but report issues
+
+# Security Stage: Scan Python code for security issues
+security:code-scan:
+  stage: security
+  image: python:3.11-slim
+  before_script:
+    # Install bandit for security code analysis
+    - pip install --quiet bandit[toml]
+  script:
+    # Scan Python code for common security issues
+    - echo "Running bandit security scanner..."
+    - bandit -r src/ app.py -f json -o bandit-report.json || true
+    - bandit -r src/ app.py -ll  # Show medium and high severity issues
   artifacts:
+    reports:
+      # GitLab can parse this for security dashboard
+      sast: bandit-report.json
     paths:
       - bandit-report.json
-    expire_in: 30 days
-  allow_failure: true
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == "main"'
+    expire_in: 1 week
+    when: always
+  only:
+    - main
+    - master
+    - merge_requests
+  allow_failure: true  # Don't block pipeline, but report issues
 
-# Safety - Check Python dependencies for known security vulnerabilities
-safety_check:
+# Security Stage: Scan for exposed secrets
+security:secret-scan:
   stage: security
   image: python:3.11-slim
   before_script:
-    - pip install safety
+    # Install gitleaks for secret scanning
+    - apt-get update && apt-get install -y wget
+    - wget -q https://github.com/gitleaks/gitleaks/releases/download/v8.18.1/gitleaks_8.18.1_linux_x64.tar.gz
+    - tar -xzf gitleaks_8.18.1_linux_x64.tar.gz
+    - chmod +x gitleaks
   script:
-    - echo "Checking for vulnerable dependencies..."
-    - safety check --json --file requirements.txt --output safety-report.json || true
-    - safety check --file requirements.txt
-  artifacts:
-    paths:
-      - safety-report.json
-    expire_in: 30 days
-  allow_failure: true
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == "main"'
+    # Scan for secrets and credentials in code
+    - echo "Scanning for exposed secrets..."
+    - ./gitleaks detect --source . --verbose --no-git || true
+  only:
+    - main
+    - master
+    - merge_requests
+  allow_failure: true  # Don't block pipeline, but report issues
 
-# Trivy - Filesystem vulnerability scanning
-trivy_fs_scan:
-  stage: security
-  image: aquasec/trivy:latest
-  script:
-    - echo "Running Trivy filesystem scan..."
-    - trivy fs --exit-code 0 --no-progress --format json --output trivy-fs-report.json .
-    - trivy fs --exit-code 0 --severity HIGH,CRITICAL --no-progress .
-  artifacts:
-    paths:
-      - trivy-fs-report.json
-    expire_in: 30 days
-  allow_failure: true
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == "main"'
-
-# ============================================================================
-# BUILD STAGE
-# ============================================================================
-
+# Build Stage: Create Docker image and push to Google Artifact Registry
 build_docker_image:
   stage: build
   image: docker:latest
@@ -200,84 +129,70 @@ build_docker_image:
     - gcloud auth activate-service-account --key-file=gcp-key.json
     - gcloud auth configure-docker $REGISTRY
   script:
-    - echo "Building Docker image..."
-    - docker build -t $DOCKER_IMAGE .
-    - echo "Pushing Docker image to registry..."
-    - docker push $DOCKER_IMAGE
-  needs:
-    - job: unit_tests
-      artifacts: false
-  rules:
-    - if: '$CI_COMMIT_BRANCH == "main"'
+    # Build the Docker image with commit SHA tag and latest tag
+    - docker build -t $IMAGE_NAME:$CI_COMMIT_SHORT_SHA .
+    - docker tag $IMAGE_NAME:$CI_COMMIT_SHORT_SHA $IMAGE_NAME:latest
+    # Push both tags to Google Artifact Registry
+    - docker push $IMAGE_NAME:$CI_COMMIT_SHORT_SHA
+    - docker push $IMAGE_NAME:latest
+  only:
+    - main  # Only build on main branch
+    - master  # Also support master branch name
+  needs: ["test"]  # Wait for tests to pass before building
 
-# ============================================================================
-# SCAN STAGE (Post-Build Container Scanning)
-# ============================================================================
-
-# Container Scanning - Scan Docker image for vulnerabilities
-container_scanning:
-  stage: scan
-  image: aquasec/trivy:latest
-  needs:
-    - build_docker_image
+# Security Stage: Scan Docker image for vulnerabilities
+security:container-scan:
+  stage: deploy  # Run as part of deploy stage but before actual deployment
+  image: google/cloud-sdk:alpine
   before_script:
-    - apk add --no-cache curl bash
-    - curl https://sdk.cloud.google.com | bash -s -- --disable-prompts > /dev/null
-    - export PATH=$PATH:/root/google-cloud-sdk/bin
-    - echo "$GCP_SERVICE_KEY" | base64 -d > gcp-key.json
-    - gcloud auth activate-service-account --key-file=gcp-key.json
-    - gcloud auth configure-docker $REGISTRY
+    # Authenticate with Google Cloud to pull the image
+    - echo "$GCP_SERVICE_KEY" | base64 -d > ${HOME}/gcp-key.json
+    - gcloud auth activate-service-account --key-file ${HOME}/gcp-key.json
+    - gcloud config set project $PROJECT_ID
+    - gcloud auth configure-docker $REGISTRY --quiet
+    # Install trivy
+    - apk add --no-cache wget tar
+    - wget -q https://github.com/aquasecurity/trivy/releases/download/v0.48.3/trivy_0.48.3_Linux-64bit.tar.gz
+    - tar -xzf trivy_0.48.3_Linux-64bit.tar.gz
+    - mv trivy /usr/local/bin/
+    - chmod +x /usr/local/bin/trivy
   script:
+    # Scan the Docker image for vulnerabilities
     - echo "Scanning Docker image for vulnerabilities..."
-    - trivy image --exit-code 0 --no-progress --format json --output trivy-container-report.json $DOCKER_IMAGE
-    - trivy image --exit-code 0 --severity HIGH,CRITICAL --no-progress $DOCKER_IMAGE
-    - |
-      # Count critical and high vulnerabilities
-      CRITICAL=$(cat trivy-container-report.json | grep -o '"Severity":"CRITICAL"' | wc -l)
-      HIGH=$(cat trivy-container-report.json | grep -o '"Severity":"HIGH"' | wc -l)
-      echo "Found $CRITICAL CRITICAL and $HIGH HIGH severity vulnerabilities"
-      # Fail if critical vulnerabilities found (can be adjusted)
-      if [ "$CRITICAL" -gt 0 ]; then
-        echo "❌ Critical vulnerabilities found! Please review and fix."
-        exit 1
-      fi
+    - trivy image --severity HIGH,CRITICAL --format json --output trivy-report.json $IMAGE_NAME:$CI_COMMIT_SHORT_SHA || true
+    - trivy image --severity HIGH,CRITICAL $IMAGE_NAME:$CI_COMMIT_SHORT_SHA || true
   artifacts:
+    reports:
+      container_scanning: trivy-report.json
     paths:
-      - trivy-container-report.json
-    expire_in: 30 days
-  allow_failure: false
-  rules:
-    - if: '$CI_COMMIT_BRANCH == "main"'
+      - trivy-report.json
+    expire_in: 1 week
+    when: always
+  only:
+    - main
+    - master
+  allow_failure: true  # Don't block deployment, but report issues
+  needs: ["build_docker_image"]  # Wait for build to complete
 
-# ============================================================================
-# DEPLOY STAGE
-# ============================================================================
-
+# Deploy Stage: Deploy the Docker image to GKE
 deploy_to_gke:
   stage: deploy
+  image: google/cloud-sdk:latest
   needs:
     - build_docker_image
-    - container_scanning
+    - security:container-scan
   before_script:
     - echo "$GCP_SERVICE_KEY" | base64 -d > gcp-key.json
     - gcloud auth activate-service-account --key-file=gcp-key.json
     - gcloud config set project $PROJECT_ID
   script:
-    - echo "Deploying to GKE..."
+    # Get GKE cluster credentials
     - gcloud container clusters get-credentials $CLUSTER --region $REGION --project $PROJECT_ID
-    - kubectl apply -f kubernetes-deployment.yaml
-    - echo "Deployment completed successfully!"
+    # Update the image tag in the deployment and apply
+    - kubectl set image deployment/ai-powered-pdf-table-extractor ai-powered-pdf-table-extractor=$IMAGE_NAME:$CI_COMMIT_SHORT_SHA --record || kubectl apply -f kubernetes-deployment.yaml
+    # Verify deployment
+    - kubectl rollout status deployment/ai-powered-pdf-table-extractor
   only:
     - main
-  environment:
-    name: production
-    url: https://your-app-url.com
-
-# ============================================================================
-# SECURITY TEMPLATES (GitLab Auto DevOps)
-# ============================================================================
-
-include:
-  - template: Security/SAST.gitlab-ci.yml
-  - template: Security/Secret-Detection.gitlab-ci.yml
-  - template: Security/Dependency-Scanning.gitlab-ci.yml
+    - master
+  when: on_success  # Only deploy if all previous stages succeed

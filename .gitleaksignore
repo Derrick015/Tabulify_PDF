@@ -1,0 +1,17 @@
+# Gitleaks ignore file
+# Add patterns or file paths to ignore false positives
+# Format: <fingerprint>:<file>:<line>
+# Or just the fingerprint if you want to ignore it everywhere
+
+# Example:
+# abc123def456:path/to/file.py:10
+
+# Common false positives (uncomment if needed):
+# Test files with dummy secrets
+# **/tests/**
+# **/test_*.py
+
+# Documentation or example files
+# **/*.md
+# **/examples/**
+

@@ -1,0 +1,28 @@
+# Bandit configuration file
+# This file configures bandit security scanner behavior
+
+[bandit]
+# Directories to exclude from scanning
+exclude_dirs = [
+    '/tests',
+    '/.venv',
+    '/venv',
+    '/build',
+    '/dist',
+    '/.eggs',
+    '/__pycache__'
+]
+
+# Test IDs to skip (uncomment and add IDs as needed)
+# Example: B101 is assert_used, B601 is paramiko_calls
+# skips = ['B101', 'B601']
+
+# Minimum severity level to report (LOW, MEDIUM, HIGH)
+level = MEDIUM
+
+# Minimum confidence level to report (LOW, MEDIUM, HIGH)
+confidence = MEDIUM
+
+# Tests to run (leave commented to run all tests)
+# tests = ['B201', 'B301']
+
