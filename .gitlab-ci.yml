@@ -9,7 +9,7 @@ variables:
   REGION: "us-central1"
   REPO: "ai-powered-pdf-table-extractor-repo" # name of the repo in the artifact registry
   REGISTRY: "us-central1-docker.pkg.dev" # registry url
-  CLUSTER: "ai-powered-pdf-table-extractor" # name of the cluster in the gke
+  CLUSTER: "ai-powered-pdf-table-extractor-cluster" # name of the cluster in the gke
 
 build_docker_image:
   stage: build
