@@ -352,7 +352,12 @@ if uploaded_file:
 
                         async def process_one_page(page_no: int):
                             async with page_semaphore:
-                                status_text.text(f"Processing page {page_no + 1}...")
+                                # Update status text, but catch StopException if user navigates away
+                                try:
+                                    status_text.text(f"Processing page {page_no + 1}...")
+                                except Exception:
+                                    # Streamlit may raise StopException if user navigates away
+                                    pass
 
                                 # Optional fast-skip using PyMuPDF table detection when not using image mode
                                 if not table_in_image:
@@ -427,7 +432,11 @@ if uploaded_file:
                                     results_by_page[page_no_result] = tables
 
                             completed += 1
-                            progress_bar.progress(min(1.0, completed / max(1, total)))
+                            try:
+                                progress_bar.progress(min(1.0, completed / max(1, total)))
+                            except Exception:
+                                # Streamlit may raise StopException if user navigates away
+                                pass
 
                         # Reconstruct results in the exact order of selected page indices
                         ordered_results = [results_by_page[pn] for pn in page_indices if pn in results_by_page]
@@ -437,7 +446,11 @@ if uploaded_file:
                         except Exception:
                             st.session_state.ordered_page_numbers = list(range(len(ordered_results)))
 
-                        status_text.text("Processing complete!")
+                        try:
+                            status_text.text("Processing complete!")
+                        except Exception:
+                            # Streamlit may raise StopException if user navigates away
+                            pass
                         return ordered_results
 
                     except Exception as e:
