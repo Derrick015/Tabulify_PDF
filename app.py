@@ -38,12 +38,12 @@ logging.basicConfig(
 )
 
 # Log the start of the application
-logging.info("Starting PDF Table Extractor AI application")
+logging.info("Starting Tabulify PDF application")
 
 # Page configuration
 st.set_page_config(
-    page_title="PDF Table Extractor AI",
-    page_icon="📊",
+    page_title="Tabulify PDF",
+    page_icon="logo.png",
     layout="wide"
 )
 
@@ -67,10 +67,18 @@ if not open_api_key:
 # Initialize OpenAI client
 openai_client = AsyncOpenAI(api_key=open_api_key)
 
-# App title and description
-st.title("PDF Table Extractor AI")
-# st.markdown("Upload a PDF file to extract tables.")
+# App header with logo
+col1, col2 = st.columns([1, 9])
+with col1:
+    if os.path.exists("logo.png"):
+        st.image("logo.png", width=80)
+with col2:
+    st.markdown("<h1 style='margin-top: 10px;'>Tabulify PDF</h1>", unsafe_allow_html=True)
 
+# AI Model Information Section
+# st.info("🤖 **This application uses OpenAI's GPT-4o Mini model to intelligently identify and extract tables from your PDFs. The AI analyzes document structure, recognizes table patterns, and converts them into structured data formats.")
+
+st.markdown("<p style='font-size: 14px;'>Tabulify PDF uses AI to intelligently detect and extract tables from your PDFs according to your instructions. It analyses the document's structure, identifies table patterns, and converts them into structured data that can be exported in Excel or CSV format.</p>", unsafe_allow_html=True)
 # Sidebar for options
 with st.sidebar:
     # st.header("Settings")
@@ -100,6 +108,9 @@ with st.sidebar:
     add_in_table_and_page_information = st.checkbox("Add table and page information", value=False, 
                                  help="Enable this if you want to add table name, position and page number to the table")
 
+    model = "gpt-5-mini"
+    vision_model = "gpt-5-mini"
+
     # st.markdown("---")  # Add some space with a horizontal line
     
     # Model selection dropdown for AI processing (hashed out - defaulted to gpt-5-mini)
@@ -108,14 +119,13 @@ with st.sidebar:
     #     options=["gpt-5", "gpt-5-mini"],
     #     index=1  # Default to gpt-5-mini as recommended option
     # )
-    model = "gpt-5-mini"
-    
+
     # vision_model = st.selectbox(
     #     "Select table identification model",
     #     options=["gpt-5", "gpt-5-mini"],
     #     index=1  # Default to gpt-5-mini as recommended option
     # )
-    vision_model = "gpt-5-mini"
+
     
     # Display information about available models to help users make appropriate selection
     # st.markdown("""

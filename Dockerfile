@@ -8,6 +8,8 @@ COPY src/ ./src/
 RUN pip install --no-cache-dir .
 
 COPY app.py .
+COPY logo.png .
+COPY favicon.png .
 
 RUN mkdir -p logs output_files
 
