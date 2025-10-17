@@ -286,6 +286,9 @@ if uploaded_file:
         
         # Show the process button only if page_indices is not empty
         if page_indices:
+            # Info message about skipping pages without tables
+            st.info("ℹ️ Pages with no tables will be automatically skipped during processing.")
+            
             # Only show the process button if we haven't completed processing or if we're reprocessing
             process_button = st.button("Process Selected Pages")
             
