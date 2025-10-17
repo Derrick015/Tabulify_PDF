@@ -20,6 +20,7 @@ The AI Powered PDF Table Extractor is designed to solve the challenging problem 
 - **User-Friendly Interface**: Simple web-based UI built with Streamlit
 - **Skips Pages With No Tables**: Pages without detected tables are automatically skipped
 - **Text Validation Mode**: When enabled, values not present in the PDF text are replaced with "N/A"
+- **Demo Version Page Limit**: Default 10-page limit (easily configurable by developers)
 
 ## Installation
 ###
@@ -57,6 +58,8 @@ streamlit run app.py
 ```
 
 The application will be available at http://localhost:8501 in your web browser.
+
+**Note:** The demo version is limited to processing PDFs with a maximum of 10 pages. See the Configuration section to modify or remove this limit.
 
 ### Command Line (CLI) Usage
 
@@ -129,10 +132,52 @@ python main.py /absolute/path/to/file.pdf --range 1 10 --format xlsx --style she
 
 ## Limitations
 
+- **Demo Version Page Limit**: The default configuration limits PDF processing to 10 pages (see Configuration section below to modify this)
 - Performance depends on the quality and complexity of the PDF
 - Processing large documents may take time and consume API credits
 - Very complex or highly stylised tables may require manual verification
 - 200 MB max file size
+
+## Configuration
+
+### Modifying the Page Limit
+
+The application includes a 10-page limit by default for demo purposes. Developers can easily modify or remove this limit:
+
+**To change the page limit:**
+
+1. Open `app.py` in your text editor
+2. Locate the page limit check (around line 177):
+   ```python
+   # Check for demo version page limit
+   if total_pages > 10:
+       st.error(f"⚠️ **Demo Version Limit Exceeded**")
+       st.warning(f"This PDF has {total_pages} pages, but this demo version is limited to 10 pages maximum. Please upload a PDF with 10 or fewer pages.")
+       doc.close()
+       if os.path.exists(pdf_path):
+           try:
+               os.unlink(pdf_path)
+           except Exception as e:
+               logging.warning(f"Error deleting temporary file: {str(e)}")
+       st.stop()
+   ```
+3. Modify the number `10` to your desired limit, or remove the entire `if` block to remove the limit entirely
+
+**Example - Change limit to 50 pages:**
+```python
+if total_pages > 50:
+    st.error(f"⚠️ **Page Limit Exceeded**")
+    st.warning(f"This PDF has {total_pages} pages, but the limit is 50 pages maximum.")
+    # ... rest of the code
+```
+
+**Example - Remove limit entirely:**
+Simply delete or comment out the entire `if total_pages > 10:` block.
+
+**Note:** If you change the page limit, also update the info message on line 141:
+```python
+st.info("📄 **Demo Version:** This version is limited to PDFs with a maximum of 10 pages.")
+```
 
 ## License
 

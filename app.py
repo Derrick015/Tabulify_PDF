@@ -76,7 +76,9 @@ with col2:
     st.markdown("<h1 style='margin-top: 10px;'>Tabulify PDF</h1>", unsafe_allow_html=True)
 
 # AI Model Information Section
-st.markdown("<p style='font-size: 14px;'>Tabulify PDF uses AI to intelligently detect and extract tables from your PDFs according to your instructions. It analyses the document's structure, identifies table patterns, and converts them into structured data that can be exported in Excel or CSV format.</p>", unsafe_allow_html=True)
+# st.info("🤖 **This application uses OpenAI's GPT-4o Mini model to intelligently identify and extract tables from your PDFs. The AI analyzes document structure, recognizes table patterns, and converts them into structured data formats.")
+
+st.markdown("<p style='font-size: 14px;'>Tabulify PDF uses AI to extract tables from PDFs and export them to Excel or CSV</p>", unsafe_allow_html=True)
 # Sidebar for options
 with st.sidebar:
     # st.header("Settings")
@@ -108,6 +110,7 @@ with st.sidebar:
 
     model = "gpt-5-mini"
     vision_model = "gpt-5-mini"
+    MAX_PAGES = 10  # Maximum number of pages that can be processed at once
 
     # Add horizontal line for visual separation of sections
     st.markdown("---")
@@ -133,6 +136,10 @@ with st.sidebar:
 # File upload section
 uploaded_file = st.file_uploader("Choose a PDF file", type="pdf", accept_multiple_files=False)
 
+# Display demo version limit notice
+if not uploaded_file:
+    st.info("📄 **Demo Version:** This version is limited to PDFs with a maximum of 10 pages.")
+
 # Main processing logic
 if uploaded_file:
     # Save uploaded file to a temporary file
@@ -145,25 +152,26 @@ if uploaded_file:
         doc = pymupdf.open(pdf_path)
         total_pages = doc.page_count
         
+        # Check for demo version page limit
+        if total_pages > MAX_PAGES:
+            st.error(f"⚠️ **Demo Version Limit Exceeded**")
+            st.warning(f"This PDF has {total_pages} pages, but this demo version is limited to 10 pages maximum. Please upload a PDF with 10 or fewer pages.")
+            st.stop()
+        
         st.success(f"Successfully loaded PDF with {total_pages} pages.")
         
         # Page range selection section - allows users to choose which pages to process
         st.subheader("Page Range Selection")
-        MAX_PAGES = 10  # Maximum number of pages that can be processed at once
         range_option = st.radio("Select pages to process:", 
                                ["All pages", "Specific range", "Custom pages"])
         
         if range_option == "All pages":
-            # Process the entire document (limited to MAX_PAGES)
-            pages_to_process = min(total_pages, MAX_PAGES)
-            page_indices = list(range(pages_to_process))
-            if total_pages > MAX_PAGES:
-                st.warning(f"Page limit: Processing first {MAX_PAGES} pages out of {total_pages} total pages")
-            else:
-                st.info(f"Processing all {total_pages} pages")
+            # Process the entire document
+            page_indices = list(range(total_pages))
+            st.info(f"Processing all {total_pages} pages")
             
         elif range_option == "Specific range":
-            # Allow selection of a continuous range of pages (limited to MAX_PAGES)
+            # Allow selection of a continuous range of pages
             col1, col2 = st.columns(2)
             
             # Initialize end_page in session state if it doesn't exist
@@ -177,31 +185,22 @@ if uploaded_file:
             
             with col2:
                 # End page selection with dynamic minimum value based on start page
-                # Ensures end page is always >= start page, and range doesn't exceed MAX_PAGES
+                # Ensures end page is always >= start page
                 if 'end_page' not in st.session_state:
                     st.session_state.end_page = min(5, total_pages)  # Default to page 5 or max
                 elif st.session_state.end_page < start_page:
                     st.session_state.end_page = start_page
                 
-                # Limit the max value to ensure no more than MAX_PAGES can be selected
-                max_end_page = min(total_pages, start_page + MAX_PAGES - 1)
-                
                 end_page = st.number_input(
                     "End page", 
                     min_value=start_page, 
-                    max_value=max_end_page, 
+                    max_value=total_pages, 
                     key="end_page"
                 )
             
             # Convert 1-indexed user input to 0-indexed page indices for processing
             page_indices = list(range(start_page - 1, end_page))
-            
-            # Validate that the range doesn't exceed MAX_PAGES
-            if len(page_indices) > MAX_PAGES:
-                st.warning(f"Page limit: Range reduced to {MAX_PAGES} pages maximum")
-                page_indices = page_indices[:MAX_PAGES]
-            
-            st.info(f"Processing pages {start_page} to {start_page + len(page_indices) - 1} (total: {len(page_indices)} pages)")
+            st.info(f"Processing pages {start_page} to {end_page} (total: {len(page_indices)} pages)")
             
             # Display preview of start and end pages to help users verify selection
             st.subheader("Range Preview")
@@ -226,7 +225,7 @@ if uploaded_file:
                 st.image(img_bytes, caption=f"Page {end_page}", width='stretch')
             
         else:  # Custom pages option
-            # Allow selection of non-consecutive pages using comma-separated list (limited to MAX_PAGES)
+            # Allow selection of non-consecutive pages using comma-separated list
             custom_pages = st.text_input("Enter page numbers separated by commas (e.g., 1,3,5,8)")
             preview_button = st.button("Preview Pages")
             
@@ -240,16 +239,10 @@ if uploaded_file:
                     page_nums = [int(p.strip()) for p in custom_pages.split(",")]
                     # Filter out invalid page numbers
                     valid_pages = [p for p in page_nums if 1 <= p <= total_pages]
-                    
-                    # Apply MAX_PAGES limit
-                    if len(valid_pages) > MAX_PAGES:
-                        st.warning(f"Page limit: Only the first {MAX_PAGES} pages will be processed out of {len(valid_pages)} selected pages")
-                        valid_pages = valid_pages[:MAX_PAGES]
-                    
                     page_indices = [p - 1 for p in valid_pages]  # Convert to 0-based indices for internal use
                     
                     # Warn if some entered page numbers were invalid
-                    if len(valid_pages) != len(page_nums) and len(page_nums) <= MAX_PAGES:
+                    if len(valid_pages) != len(page_nums):
                         st.warning(f"Some page numbers were out of range and will be ignored. Valid range: 1-{total_pages}")
                     
                     st.info(f"Processing {len(page_indices)} pages: {', '.join(map(str, valid_pages))}")
@@ -660,8 +653,12 @@ if uploaded_file:
     
     finally:
         # Close the document before attempting to delete the file
-        if 'doc' in locals() and doc:
-            doc.close()
+        if 'doc' in locals():
+            try:
+                doc.close()
+            except Exception:
+                # Document already closed or invalid
+                pass
             
         # Clean up the temporary file with better error handling
         if os.path.exists(pdf_path):
