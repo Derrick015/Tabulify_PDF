@@ -414,30 +414,34 @@ if uploaded_file:
                             try:
                                 result = await fut
                             except Exception as e:
-                                logging.error(f"Page task failed: {e}")
+                                logging.error(f"Page task failed with exception: {e}", exc_info=True)
                                 result = None
 
                             # Expect a tuple: (page_no, tables)
                             if result is not None:
                                 try:
                                     page_no_result, tables = result
-                                except Exception:
+                                    logging.info(f"Page {page_no_result + 1} completed with {len(tables) if tables else 0} tables")
+                                    if page_no_result is not None and tables and len(tables) > 0:
+                                        results_by_page[page_no_result] = tables
+                                except Exception as e:
+                                    logging.error(f"Failed to unpack result: {e}, result={result}", exc_info=True)
                                     page_no_result, tables = None, None
-                                if page_no_result is not None and tables and len(tables) > 0:
-                                    results_by_page[page_no_result] = tables
 
                             # Update progress after each completion
                             progress_data['completed'] += 1
+                            logging.info(f"Progress: {progress_data['completed']}/{progress_data['total']} pages processed")
 
                         # Reconstruct results in the exact order of selected page indices
                         ordered_results = [results_by_page[pn] for pn in page_indices if pn in results_by_page]
                         # Return ordered page numbers for accurate labeling in previews
                         ordered_page_numbers = [pn for pn in page_indices if pn in results_by_page]
                         
+                        logging.info(f"Returning results: {len(ordered_results)} pages with tables, page numbers: {[pn+1 for pn in ordered_page_numbers]}")
                         return ordered_results, ordered_page_numbers, progress_data
 
                     except Exception as e:
-                        logging.error(f"Processing error details: {str(e)}")
+                        logging.error(f"Processing error details: {str(e)}", exc_info=True)
                         return [], [], progress_data
                 
                 # Start the asynchronous processing workflow
@@ -446,13 +450,18 @@ if uploaded_file:
                 with st.spinner(f"Processing {len(page_indices)} page(s)..."):
                     try:
                         # Run the async function in the main thread
+                        logging.info("Starting asyncio.run(process_pages())...")
                         result = asyncio.run(process_pages())
+                        logging.info(f"asyncio.run completed, result type: {type(result)}, result: {result if len(str(result)) < 200 else str(result)[:200]}")
+                        
                         output_final, ordered_page_numbers, progress_data = result
+                        logging.info(f"Unpacked result - output_final length: {len(output_final)}, ordered_page_numbers: {ordered_page_numbers}")
                         
                         # Store the output in session state for persistence between Streamlit reruns
                         st.session_state.output_final = output_final
                         st.session_state.ordered_page_numbers = ordered_page_numbers
                         st.session_state.processing_complete = True
+                        logging.info("Session state updated successfully")
                         
                         # Log results for debugging
                         total_tables = sum(len(page_tables) for page_tables in output_final if page_tables)
@@ -462,19 +471,23 @@ if uploaded_file:
                         end_time = time.time()
                         elapsed_time = end_time - start_time
                         st.success(f"Processing completed in {elapsed_time:.2f} seconds")
+                        logging.info("Success message displayed")
                         
                     except Exception as e:
-                        logging.error(f"Async processing error: {str(e)}")
+                        logging.error(f"Async processing error: {str(e)}", exc_info=True)
                         st.error("An issue occurred during processing. Please try again. If the issue persists, try with a different page range or check your PDF file.")
                         st.session_state.output_final = []
                         st.session_state.processing_complete = False
             
             # Results display section - shows after processing is complete
             if st.session_state.processing_complete:
+                logging.info("Results display section: processing_complete is True")
                 output_final = st.session_state.output_final
+                logging.info(f"Results display section: output_final type={type(output_final)}, length={len(output_final) if output_final else 0}")
                 
                 # Only show preview and download options if we have results
                 if output_final and len(output_final) > 0:
+                    logging.info(f"Showing results display with {len(output_final)} pages")
                     # Add a toggle to control preview visibility
                     # This helps manage UI complexity for large results
                     show_preview = st.checkbox("Show data preview", value=True)
@@ -633,6 +646,7 @@ if uploaded_file:
                     
 
                 else:
+                    logging.warning("No tables found - output_final is empty or None")
                     st.warning("No tables were found in the selected pages.")
     
     except Exception as e:
