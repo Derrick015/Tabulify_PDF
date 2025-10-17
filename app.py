@@ -11,7 +11,6 @@ import zipfile
 import io
 import pandas as pd
 import itertools
-from streamlit.runtime.scriptrunner_utils.exceptions import StopException
 
 from src.pdf_extraction import (
     get_page_pixel_data,
@@ -300,7 +299,7 @@ if uploaded_file:
         # Show the process button only if page_indices is not empty
         if page_indices:
             # Info message about skipping pages without tables
-            st.info("ℹ️ Pages with no tables will be automatically skipped during processing.")
+            st.info("ℹ️ Pages with no tables will be skipped")
             
             # Only show the process button if we haven't completed processing or if we're reprocessing
             process_button = st.button("Process Selected Pages")
@@ -309,10 +308,6 @@ if uploaded_file:
                 # Reset the processing state
                 st.session_state.processing_complete = False
                 st.session_state.output_final = []
-                
-                # Show progress indicators for the processing
-                progress_bar = st.progress(0)
-                status_text = st.empty()
                 
                 async def process_pages():
                     """
@@ -330,14 +325,15 @@ if uploaded_file:
                     """
                     tasks = []
                     results_output = []
+                    
+                    # Shared progress tracking (thread-safe for async tasks)
+                    progress_data = {
+                        'completed': 0,
+                        'total': len(page_indices),
+                        'current_page': None
+                    }
 
                     try:
-                        try:
-                            status_text.text("Initializing page processing...")
-                        except (StopException, Exception):
-                            # Streamlit raises StopException if user navigates away
-                            pass
-
                         # Bound overall page concurrency
                         # Priority: explicit env var -> CPU-based heuristic
                         env_val = os.getenv("PAGE_MAX_CONCURRENCY")
@@ -357,12 +353,8 @@ if uploaded_file:
 
                         async def process_one_page(page_no: int):
                             async with page_semaphore:
-                                # Update status text, but catch StopException if user navigates away
-                                try:
-                                    status_text.text(f"Processing page {page_no + 1}...")
-                                except (StopException, Exception):
-                                    # Streamlit raises StopException if user navigates away
-                                    pass
+                                # Update progress data (safe - no Streamlit calls here)
+                                progress_data['current_page'] = page_no + 1
 
                                 # Optional fast-skip using PyMuPDF table detection when not using image mode
                                 if not table_in_image:
@@ -417,8 +409,6 @@ if uploaded_file:
                         # Schedule all page tasks
                         coros = [process_one_page(pn) for pn in page_indices]
 
-                        completed = 0
-                        total = len(coros)
                         results_by_page = {}
                         for fut in asyncio.as_completed(coros):
                             try:
@@ -436,50 +426,43 @@ if uploaded_file:
                                 if page_no_result is not None and tables and len(tables) > 0:
                                     results_by_page[page_no_result] = tables
 
-                            completed += 1
-                            try:
-                                progress_bar.progress(min(1.0, completed / max(1, total)))
-                            except (StopException, Exception):
-                                # Streamlit raises StopException if user navigates away
-                                pass
+                            # Update progress after each completion
+                            progress_data['completed'] += 1
 
                         # Reconstruct results in the exact order of selected page indices
                         ordered_results = [results_by_page[pn] for pn in page_indices if pn in results_by_page]
                         # Save ordered page numbers (0-indexed) for accurate labeling in previews
-                        try:
-                            st.session_state.ordered_page_numbers = [pn for pn in page_indices if pn in results_by_page]
-                        except (StopException, Exception):
-                            st.session_state.ordered_page_numbers = list(range(len(ordered_results)))
+                        st.session_state.ordered_page_numbers = [pn for pn in page_indices if pn in results_by_page]
+                        
+                        return ordered_results, progress_data
 
-                        try:
-                            status_text.text("Processing complete!")
-                        except (StopException, Exception):
-                            # Streamlit raises StopException if user navigates away
-                            pass
-                        return ordered_results
-
-                    except StopException:
-                        # User navigated away or stopped the script - this is expected behavior
-                        logging.info("Processing stopped by user interaction")
-                        return []
                     except Exception as e:
-                        st.error("An issue occurred during processing. Please try again. If the issue persists, try with a different page range or check your PDF file.")
                         logging.error(f"Processing error details: {str(e)}")
-                        return []
+                        return [], progress_data
                 
                 # Start the asynchronous processing workflow
                 start_time = time.time()
-                with st.spinner("Processing PDF tables..."):
-                    # Run the async function in the main thread
-                    output_final = asyncio.run(process_pages())
-                    # Store the output in session state for persistence between Streamlit reruns
-                    st.session_state.output_final = output_final
-                    st.session_state.processing_complete = True
                 
-                # Calculate and display processing time for performance feedback
-                end_time = time.time()
-                elapsed_time = end_time - start_time
-                st.success(f"Processing completed in {elapsed_time:.2f} seconds")
+                with st.spinner(f"Processing {len(page_indices)} page(s)..."):
+                    try:
+                        # Run the async function in the main thread
+                        result = asyncio.run(process_pages())
+                        output_final, progress_data = result
+                        
+                        # Store the output in session state for persistence between Streamlit reruns
+                        st.session_state.output_final = output_final
+                        st.session_state.processing_complete = True
+                        
+                        # Calculate and display processing time for performance feedback
+                        end_time = time.time()
+                        elapsed_time = end_time - start_time
+                        st.success(f"Processing completed in {elapsed_time:.2f} seconds")
+                        
+                    except Exception as e:
+                        logging.error(f"Async processing error: {str(e)}")
+                        st.error("An issue occurred during processing. Please try again. If the issue persists, try with a different page range or check your PDF file.")
+                        st.session_state.output_final = []
+                        st.session_state.processing_complete = False
             
             # Results display section - shows after processing is complete
             if st.session_state.processing_complete:
