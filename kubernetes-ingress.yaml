@@ -1,7 +1,7 @@
 apiVersion: networking.gke.io/v1
 kind: ManagedCertificate
 metadata:
-  name: pdf-extractor-cert
+  name: ai-powered-pdf-table-extractor-cert
 spec:
   domains:
     - tabulifypdf.com  
@@ -12,12 +12,16 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: pdf-extractor-ingress
+  name: ai-powered-pdf-table-extractor-ingress
   annotations:
     kubernetes.io/ingress.class: "gce"
-    kubernetes.io/ingress.global-static-ip-name: "pdf-extractor-ip"
-    networking.gke.io/managed-certificates: "pdf-extractor-cert"
+    kubernetes.io/ingress.global-static-ip-name: "ai-powered-pdf-table-extractor-ip"
+    networking.gke.io/managed-certificates: "ai-powered-pdf-table-extractor-cert"
     kubernetes.io/ingress.allow-http: "true"  # Redirects HTTP to HTTPS automatically
+    # Increase body size for large PDF uploads (default is 32MB, setting to 100MB)
+    ingress.kubernetes.io/custom-request-headers: "X-Forwarded-Proto:https"
+    # Connection timeout settings
+    cloud.google.com/connection-draining-timeout: "60"
 spec:
   defaultBackend:
     service:

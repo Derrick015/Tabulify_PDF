@@ -1,0 +1,22 @@
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: ai-powered-pdf-table-extractor-backendconfig
+spec:
+  # Increase timeout to 300 seconds (5 minutes) for PDF processing
+  timeoutSec: 600
+  
+  # Connection draining timeout
+  connectionDraining:
+    drainingTimeoutSec: 60
+  
+  # Health check configuration using Streamlit's built-in health endpoint
+  healthCheck:
+    checkIntervalSec: 10
+    timeoutSec: 10
+    healthyThreshold: 2
+    unhealthyThreshold: 3
+    type: HTTP
+    requestPath: /_stcore/health
+    port: 8501
+

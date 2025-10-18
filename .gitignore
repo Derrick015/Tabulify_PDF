@@ -120,3 +120,6 @@ gitleaks_8.18.1_linux_x64.tar.gz
 gitleaks
 
 GCP deployment.md
+
+archive/
+archive/*
