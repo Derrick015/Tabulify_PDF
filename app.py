@@ -435,7 +435,7 @@ if uploaded_file:
                 output_final = None
                 ordered_page_numbers = None
                 
-                with st.spinner(f"Processing {len(page_indices)} page(s)..."):
+                with st.spinner(f"Processing {len(page_indices)} page(s)... This typically takes about 2 minutes to complete"):
                     try:
                         # Run the async function in the main thread
                         logging.info("Starting asyncio.run(process_pages())...")
