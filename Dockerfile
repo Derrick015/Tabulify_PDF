@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir .
 COPY app.py .
 COPY logo.png .
 COPY favicon.png .
+COPY .streamlit/ ./.streamlit/
 
 RUN mkdir -p logs output_files
 
