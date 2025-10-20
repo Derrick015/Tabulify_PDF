@@ -75,8 +75,6 @@ with col1:
 with col2:
     st.markdown("<h1 style='margin-top: 10px;'>Tabulify PDF</h1>", unsafe_allow_html=True)
 
-# AI Model Information Section
-# st.info("🤖 **This application uses OpenAI's GPT-4o Mini model to intelligently identify and extract tables from your PDFs. The AI analyzes document structure, recognizes table patterns, and converts them into structured data formats.")
 
 st.markdown("<p style='font-size: 14px;'>Tabulify PDF uses AI to extract tables from PDFs and export them to Excel or CSV</p>", unsafe_allow_html=True)
 # Sidebar for options
@@ -95,7 +93,7 @@ with st.sidebar:
     user_text = st.text_area(
         "Instructions for AI", 
         value="Extract all data from the table(s)",
-        height=200  # Make the box much taller
+        height=300  
     )
     
     st.markdown("---")  # Add some space with a horizontal line
@@ -329,8 +327,7 @@ if uploaded_file:
                             page_max = 0
                         if page_max <= 0:
                             cpu_count = os.cpu_count() or 4
-                            # Heuristic: leave one core free; hard-cap at 4 to control memory from 500 DPI renders
-                            page_max = max(1, min(4, cpu_count - 1))
+                            page_max = max(1, min(6, cpu_count - 1))
                         logging.info(f"Using PAGE_MAX_CONCURRENCY={page_max}")
                         page_semaphore = asyncio.Semaphore(page_max)
 
@@ -356,7 +353,7 @@ if uploaded_file:
                                 # Concurrent text/image extraction in threads
                                 extracted_text, base64_image = await asyncio.gather(
                                     asyncio.to_thread(get_page_text_thread, pdf_path, page_no),
-                                    asyncio.to_thread(get_page_pixel_data, pdf_path, page_no, 500, 'png'),
+                                    asyncio.to_thread(get_page_pixel_data, pdf_path, page_no, 300, 'png'),
                                 )
 
                                 # LLM header/column identification

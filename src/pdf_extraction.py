@@ -11,7 +11,8 @@ from pydantic import  create_model
 from src.llm import table_identification_llm,  vision_llm_parser
 
 # Concurrency controls for OpenAI calls
-MAX_CONCURRENCY = int(os.getenv("MAX_CONCURRENCY", "8"))
+# Increased default from 8 to 16 for better parallelism with OpenAI API
+MAX_CONCURRENCY = int(os.getenv("MAX_CONCURRENCY", "16"))
 SEMAPHORE_LIMIT = asyncio.Semaphore(MAX_CONCURRENCY)
 
 async def with_openai_semaphore(coro_func, *args, **kwargs):
@@ -676,7 +677,8 @@ async def extract_tables_from_pdf(
 
     # Bound overall page concurrency (local semaphore)
     cpu_count = os.cpu_count() or 4
-    page_max = max(1, min(4, cpu_count - 1))
+    # Increased from 4 to 6 since we reduced DPI from 500 to 200 (less memory per page)
+    page_max = max(1, min(6, cpu_count - 1))
     logging.info(f"Using PAGE_MAX_CONCURRENCY={page_max}")
 
     page_semaphore = asyncio.Semaphore(page_max)
@@ -690,9 +692,10 @@ async def extract_tables_from_pdf(
                     return None
 
             # Run text and image extraction concurrently
+            # Using 200 DPI for faster processing while maintaining quality
             extracted_text, base64_image = await asyncio.gather(
                 asyncio.to_thread(get_page_text_thread, pdf_path, page_no),
-                asyncio.to_thread(get_page_pixel_data, pdf_path, page_no, 300, "png"),
+                asyncio.to_thread(get_page_pixel_data, pdf_path, page_no, 200, "png"),
             )
 
             # Validate via LLM (bounded)

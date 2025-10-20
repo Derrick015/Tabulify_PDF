@@ -19,17 +19,22 @@ spec:
         - containerPort: 8501
         resources:
           requests:
-            cpu: "1000m"  # 1 CPU
-            memory: "2Gi" # 2GB
+            cpu: "2000m"  # 2 CPUs - ensures good baseline performance
+            memory: "3Gi" # 3GB - enough for multiple concurrent PDFs
           limits:
-            cpu: "4000m" # 4 CPUs
-            memory: "8Gi" # 8GB
+            cpu: "6000m" # 6 CPUs - optimal for page_max=6 concurrency
+            memory: "10Gi" # 10GB - headroom for large PDFs with many pages
         env:
         - name: OPENAI_API_KEY
           valueFrom:
             secretKeyRef:
               name: ai-powered-pdf-table-extractor-secrets
               key: OPENAI_API_KEY
+        # Performance tuning environment variables
+        - name: PAGE_MAX_CONCURRENCY
+          value: "6"  # Process up to 6 pages simultaneously (matches CPU limit)
+        - name: MAX_CONCURRENCY
+          value: "20"  # OpenAI API call concurrency (network-bound, can be higher)
 
 ---
 

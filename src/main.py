@@ -79,10 +79,11 @@ async def process_pdf(args):
                     continue
 
             extracted_text = page.get_text()
+            # Reduced DPI from 500 to 200 for faster processing
             base64_image = get_page_pixel_data(
                 pdf_path=args.pdf_path,
                 page_no=page_no,
-                dpi=500,
+                dpi=200,
                 image_type="png",
             )
 

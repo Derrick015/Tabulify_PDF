@@ -116,7 +116,7 @@ async def vision_llm_parser(user_text, text_input, table_to_target, base64_image
                     {
                         "type": "image_url",
                         "image_url": {
-                            "url": f"data:image/png;base64,{base64_image}", "detail": "high"
+                            "url": f"data:image/png;base64,{base64_image}", "detail": "auto"
                         },
                     },
                 ],
