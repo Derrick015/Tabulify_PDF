@@ -25,7 +25,7 @@ test:
     # Install package with dev dependencies from pyproject.toml
     - pip install --quiet -e ".[dev]"
   script:
-    # Run pytest with coverage reporting
+    # Run pytest with coverage reporting.
     # -v: verbose output, --tb=short: shorter traceback format
     - pytest -v --tb=short --cov=src --cov-report=term --cov-report=html
   # Extract test coverage percentage from pytest output for GitLab's coverage badge
