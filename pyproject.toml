@@ -68,7 +68,7 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/Derrick015/AI_Powered_PDF_Table_Extractor"
 Repository = "https://github.com/Derrick015/AI_Powered_PDF_Table_Extractor"
-Issues = "https://github.com/Derrick015/PDF_Table_Extractor_AI/issues"
+Issues = "https://github.com/Derrick015/AI_Powered_PDF_Table_Extractor/issues"
 
 [project.scripts]
 pdf-table-extractor = "src.main:main"
