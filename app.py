@@ -71,9 +71,9 @@ openai_client = AsyncOpenAI(api_key=open_api_key)
 col1, col2 = st.columns([1, 9])
 with col1:
     if os.path.exists("logo.png"):
-        st.image("logo.png", width=80)
+        st.image("logo.png", width=120)
 with col2:
-    st.markdown("<h1 style='margin-top: 10px;'>Tabulify PDF</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='margin-top: 3px;'>Tabulify PDF</h1>", unsafe_allow_html=True)
 
 
 st.markdown("<p style='font-size: 14px;'>Tabulify PDF uses AI to extract tables from PDFs and export them to Excel or CSV</p>", unsafe_allow_html=True)
