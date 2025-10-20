@@ -23,7 +23,7 @@ The AI Powered PDF Table Extractor is designed to solve the challenging problem 
 - **Demo Version Page Limit**: Default 10-page limit (easily configurable by developers)
 
 ## Installation
-###
+##
 ### Prerequisites
 
 - Python 3.11 or higher
