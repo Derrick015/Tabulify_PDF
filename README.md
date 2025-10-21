@@ -1,13 +1,16 @@
-# AI Powered PDF Table Extractor
+# Tabulify PDF
 
 A powerful tool that uses AI models to extract tabular data from PDF documents.
 
 ## Video Demo
 https://github.com/user-attachments/assets/6644dce8-45af-4366-835f-e47913fc627e
 
+## Website
+TabulifyPDF.com
+
 ## Overview
 
-The AI Powered PDF Table Extractor is designed to solve the challenging problem of extracting structured table data from PDF files. It leverages advanced multimodal models to identify, parse, and extract tables from PDFs.
+The Tabulify PDF is designed to solve the challenging problem of extracting structured table data from PDF files. It leverages advanced multimodal models to identify, parse, and extract tables from PDFs.
 ## Key Features
 
 - **AI-Powered Table Detection**: Automatically identifies tables within PDF documents
@@ -33,8 +36,8 @@ The AI Powered PDF Table Extractor is designed to solve the challenging problem 
 
 1. Clone the repository:
    ```
-   git clone https://github.com/Derrick015/AI_Powered_PDF_Table_Extractor.git
-   cd AI_Powered_PDF_Table_Extractor
+   git clone https://github.com/Derrick015/Tabulify_PDF.git
+   cd Tabulify_PDF
    ```
 
 2. Install required dependencies:
