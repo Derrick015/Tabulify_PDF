@@ -6,7 +6,7 @@ A powerful tool that uses AI models to extract tabular data from PDF documents.
 https://github.com/user-attachments/assets/6644dce8-45af-4366-835f-e47913fc627e
 
 ## Website
-TabulifyPDF.com
+[TabulifyPDF.com](https://tabulifypdf.com)
 
 ## Overview
 
