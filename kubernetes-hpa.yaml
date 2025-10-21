@@ -38,5 +38,5 @@ spec:
       - type: Pods
         value: 2  # Or add 2 pods at a time
         periodSeconds: 15
-      selectPolicy: Max  # Use the more aggressive policy.
+      selectPolicy: Max  # Use the more aggressive policy
 
